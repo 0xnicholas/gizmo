@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用量监视器 · 菜单栏 UI 原型(PROTOTYPE)</title>
+<!--
+  PROTOTYPE — 用完即弃,非产品代码。
+  问题:「用量监视器」菜单栏 App 的 UI 长什么样?
+  方案:SwiftUI MenuBarExtra 尚无源码,以单文件 HTML 模拟 macOS 菜单栏 popover。
+  三个布局变体通过 ?variant=A|B|C 切换;底部控制条可换 场景 / 图标语言 / 外观。
+  数据为占位示例;阈值取值、图标汇总口径、控制台链接目标均未定(见地图雾区)。
+-->
+<style>
+  :root{
+    --stage1:#a8c0dd; --stage2:#e4e9f0;
+    --panel:#f4f4f5; --card:#ffffff; --card2:#fafafa;
+    --text:#1c1c1e; --sub:#6e6e73; --hair:rgba(0,0,0,.07);
+    --track:rgba(120,120,128,.22); --fill:#0a84ff;
+    --green:#30d158; --yellow:#ffd60a; --red:#ff453a; --blue:#0a84ff;
+    --shadow:0 22px 60px rgba(0,0,0,.28), 0 4px 14px rgba(0,0,0,.12);
+    --errbg:#ffe9e7; --errtx:#c0392b;
+  }
+  html.theme-dark{
+    --stage1:#1c1e22; --stage2:#2a2d33;
+    --panel:#2b2b2e; --card:#3a3a3d; --card2:#353538;
+    --text:#f5f5f7; --sub:#98989d; --hair:rgba(255,255,255,.09);
+    --track:rgba(255,255,255,.18); --fill:#0a84ff;
+    --shadow:0 22px 60px rgba(0,0,0,.6), 0 4px 14px rgba(0,0,0,.35);
+    --errbg:#4a2626; --errtx:#ff8a80;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    background:linear-gradient(160deg, var(--stage1), var(--stage2));
+    min-height:100vh; color:var(--text);
+  }
+  /* ---------- 舞台与系统菜单栏 ---------- */
+  .stage{position:relative; min-height:100vh; padding-bottom:150px; overflow:hidden}
+  .menubar{
+    position:sticky; top:0; z-index:30; height:30px;
+    background:linear-gradient(rgba(30,30,34,.82), rgba(30,30,34,.72));
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    color:#fff; font-size:12.5px; display:flex; align-items:center;
+    padding:0 14px; user-select:none;
+    box-shadow:0 1px 0 rgba(0,0,0,.35);
+  }
+  .menubar .left{display:flex; align-items:center; gap:16px; font-weight:600}
+  .menubar .right{margin-left:auto; display:flex; align-items:center; gap:14px}
+  .mbicon{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px}
+  .mbicon svg{display:block}
+  .mb-wrap{position:relative; cursor:default}
+  .mb-dot{position:absolute; top:1px; right:0; width:7px; height:7px; border-radius:50%;
+    border:1.5px solid rgba(30,30,34,.9)}
+  .mb-dot.on{background:var(--red)}
+  /* 图标放大示意(右上角) */
+  .loupe{
+    position:fixed; right:22px; top:56px; z-index:40; background:rgba(0,0,0,.55);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,.18); border-radius:14px; padding:10px 14px 8px;
+    display:flex; flex-direction:column; align-items:center; gap:4px; user-select:none;
+  }
+  .loupe .cap{color:rgba(255,255,255,.72); font-size:10.5px; letter-spacing:.04em}
+  .loupe .big{width:96px; height:52px; display:flex; align-items:center; justify-content:center}
+  .loupe .note{color:rgba(255,255,255,.5); font-size:9.5px; width:110px; text-align:center; line-height:1.4}
+  /* ---------- popover ---------- */
+  .anchor{position:absolute; top:38px; right:calc(50% - 190px); z-index:20}
+  .popover{
+    width:380px; background:var(--panel); border-radius:14px;
+    box-shadow:var(--shadow); overflow:hidden; position:relative;
+    border:1px solid var(--hair);
+  }
+  .arrow{position:absolute; top:-6px; left:calc(50% - 7px); width:14px; height:14px;
+    background:var(--panel); transform:rotate(45deg); border-radius:3px;
+    border-top:1px solid var(--hair); border-left:1px solid var(--hair)}
+  .pop-head{display:flex; align-items:center; gap:8px; padding:12px 14px 8px; user-select:none}
+  .pop-head .t{font-weight:700; font-size:14.5px}
+  .pop-head .sp{flex:1}
+  .ibtn{width:26px; height:26px; border-radius:7px; display:inline-flex; align-items:center;
+    justify-content:center; font-size:14px; color:var(--sub); background:transparent; border:none; cursor:pointer}
+  .ibtn:hover{background:var(--hair)}
+  .ibtn.spin svg{animation:rot 1s linear infinite}
+  @keyframes rot{to{transform:rotate(360deg)}}
+  .pop-body{padding:2px 12px 10px}
+  .pop-foot{display:flex; align-items:center; gap:6px; padding:7px 14px; font-size:11px; color:var(--sub);
+    border-top:1px solid var(--hair); user-select:none}
+  .pop-foot .sp{flex:1}
+  /* ---------- 变体 A:卡片 ---------- */
+  .card{background:var(--card); border:1px solid var(--hair); border-radius:12px;
+    padding:10px 12px 8px; margin-bottom:9px}
+  .card:last-child{margin-bottom:2px}
+  .c-head{display:flex; align-items:center; gap:7px; margin-bottom:8px}
+  .c-name{font-weight:600; font-size:13px}
+  .pill{font-size:10px; padding:1.5px 7px; border-radius:20px; background:var(--card2);
+    border:1px solid var(--hair); color:var(--sub); white-space:nowrap}
+  .st{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--sub); white-space:nowrap}
+  .st i{width:7px; height:7px; border-radius:50%}
+  .st.green i{background:var(--green)} .st.yellow i{background:var(--yellow)} .st.red i{background:var(--red)}
+  .wrow{margin-bottom:7px}
+  .wrow .lbl{display:flex; justify-content:space-between; font-size:11px; color:var(--sub); margin-bottom:3px}
+  .wrow .lbl b{color:var(--text); font-weight:600; font-variant-numeric:tabular-nums}
+  .bar{height:5px; border-radius:3px; background:var(--track); overflow:hidden}
+  .bar i{display:block; height:100%; border-radius:3px; background:var(--fill)}
+  .subrow{display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--sub);
+    padding:3px 0; border-top:1px dashed var(--hair); margin-top:2px}
+  .subrow b{color:var(--text); font-weight:600; font-variant-numeric:tabular-nums}
+  .subrow .muted{color:var(--sub); font-weight:400; font-size:10px}
+  .c-foot{display:flex; align-items:center; justify-content:space-between; margin-top:7px;
+    font-size:10.5px; color:var(--sub)}
+  .link{color:var(--blue); font-size:11px; text-decoration:none; cursor:pointer; white-space:nowrap}
+  .link:hover{text-decoration:underline}
+  .balance-big{font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+    display:flex; align-items:baseline; gap:4px}
+  .balance-big .cur{font-size:14px; font-weight:600; color:var(--sub)}
+  .dash{color:var(--sub); font-weight:400}
+  /* ---------- 变体 B:紧凑行 ---------- */
+  .rows .row{border-bottom:1px solid var(--hair)}
+  .rows .row:last-child{border-bottom:none}
+  .r-main{display:flex; align-items:center; gap:9px; padding:9px 2px; cursor:pointer; user-select:none}
+  .r-main .nm{font-weight:600; font-size:13px; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .r-main .meta{font-size:10px; color:var(--sub); font-weight:400; margin-left:4px}
+  .r-main .rem{font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .r-main .mini{width:64px; flex:0 0 auto}
+  .r-main .chev{color:var(--sub); font-size:10px; transition:transform .15s; width:10px; text-align:center}
+  .row.open .chev{transform:rotate(180deg)}
+  .r-detail{display:none; padding:2px 2px 10px 22px}
+  .row.open .r-detail{display:block}
+  .r-detail .wrow{margin-bottom:6px}
+  /* ---------- 变体 C:总览 + 焦点 ---------- */
+  .ov{display:flex; align-items:center; gap:9px; background:var(--card); border:1px solid var(--hair);
+    border-radius:12px; padding:9px 12px; margin-bottom:9px}
+  .ov .bigdot{width:22px; height:22px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; font-size:11px; font-weight:700; color:#fff; flex:0 0 auto}
+  .ov .txt{font-size:11.5px; color:var(--sub); line-height:1.35}
+  .ov .txt b{color:var(--text)}
+  .tabs{display:flex; background:var(--card2); border:1px solid var(--hair); border-radius:9px;
+    padding:2px; margin-bottom:9px; user-select:none}
+  .tab{flex:1; text-align:center; font-size:11.5px; padding:4.5px 0; border-radius:7px; color:var(--sub);
+    cursor:pointer; border:none; background:transparent; font-family:inherit}
+  .tab.on{background:var(--card); color:var(--text); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .foc-card{background:var(--card); border:1px solid var(--hair); border-radius:12px; padding:11px 13px 9px}
+  .foc-head{display:flex; align-items:center; gap:7px; margin-bottom:9px}
+  .foc-head .c-name{font-size:14px}
+  .foc-actions{margin-top:9px; display:flex; gap:8px; justify-content:flex-end; align-items:center}
+  .fbtn{font-size:11.5px; padding:4px 12px; border-radius:7px; border:1px solid var(--hair);
+    background:var(--card2); color:var(--text); cursor:pointer; font-family:inherit}
+  .fbtn:hover{filter:brightness(1.05)}
+  /* ---------- 错误/占位态 ---------- */
+  .err-card{display:flex; flex-direction:column; align-items:center; gap:7px; padding:22px 12px; text-align:center}
+  .err-card .ic{font-size:26px}
+  .err-card .msg{font-size:12.5px; font-weight:600}
+  .err-card .sub-msg{font-size:11px; color:var(--sub); line-height:1.5}
+  .err-card .act{display:flex; gap:8px; margin-top:4px}
+  .btn{font-size:11.5px; padding:4px 13px; border-radius:8px; border:none; cursor:pointer; font-family:inherit}
+  .btn.primary{background:var(--blue); color:#fff}
+  .btn.plain{background:var(--card2); color:var(--text); border:1px solid var(--hair)}
+  /* ---------- 通知横幅 ---------- */
+  .notif{
+    position:fixed; top:44px; right:20px; z-index:50; width:340px;
+    background:color-mix(in srgb, var(--card) 86%, transparent);
+    backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+    border:1px solid var(--hair); border-radius:14px; box-shadow:var(--shadow);
+    padding:12px 14px; font-size:12px; animation:drop .35s ease;
+  }
+  @keyframes drop{from{transform:translateY(-8px); opacity:0} to{transform:none; opacity:1}}
+  .notif .n-app{display:flex; align-items:center; gap:7px; font-weight:600; font-size:12.5px; margin-bottom:5px}
+  .notif .n-body{color:var(--sub); line-height:1.45}
+  .notif .n-body b{color:var(--text)}
+  .notif .n-time{font-size:10.5px; color:var(--sub); margin-top:6px}
+  .notif .x{position:absolute; top:8px; right:10px; color:var(--sub); cursor:pointer; font-size:12px}
+  /* ---------- 底部控制条(不属于被评估设计) ---------- */
+  .ctrl{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:60; width:min(880px,96vw);
+    background:rgba(24,24,28,.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.16); border-radius:14px; padding:9px 12px;
+    display:flex; flex-direction:column; gap:7px; box-shadow:0 8px 30px rgba(0,0,0,.35);
+    user-select:none;
+  }
+  .ctrl .row1{display:flex; align-items:center; gap:8px; justify-content:center}
+  .ctrl .tag{font-size:9.5px; font-weight:700; letter-spacing:.08em; color:#000; background:#ffd60a;
+    padding:2px 6px; border-radius:4px}
+  .ctrl .hlp{font-size:10px; color:rgba(255,255,255,.5); margin-left:auto}
+  .ctrl .g{display:flex; align-items:center; gap:4px; background:rgba(255,255,255,.08); border-radius:9px; padding:3px}
+  .ctrl .g .gl{font-size:10px; color:rgba(255,255,255,.55); padding:0 6px; white-space:nowrap}
+  .chip{border:none; background:transparent; color:rgba(255,255,255,.85); font-size:11px; padding:3.5px 9px;
+    border-radius:7px; cursor:pointer; font-family:inherit; white-space:nowrap}
+  .chip:hover{background:rgba(255,255,255,.1)}
+  .chip.on{background:var(--blue); color:#fff; font-weight:600}
+  .navbtn{width:26px; height:24px; border-radius:7px; border:none; background:rgba(255,255,255,.1);
+    color:#fff; cursor:pointer; font-size:12px}
+  .navbtn:hover{background:rgba(255,255,255,.2)}
+  .vlabel{font-size:11.5px; color:#fff; min-width:112px; text-align:center; font-variant-numeric:tabular-nums}
+  .row2{display:flex; gap:8px; justify-content:center; flex-wrap:wrap}
+  /* 场景/外观提示 */
+  .stage-note{position:absolute; left:14px; top:46px; max-width:230px; font-size:10.5px; line-height:1.6;
+    color:var(--sub); background:color-mix(in srgb, var(--card) 72%, transparent); border:1px solid var(--hair);
+    border-radius:10px; padding:8px 10px; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px)}
+  .stage-note b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+  <!-- 系统菜单栏模拟 -->
+  <div class="menubar">
+    <div class="left"><span style="font-size:14px">&#63743;</span><span>用量监视器</span></div>
+    <div class="right">
+      <span id="mbAppIcon"></span>
+      <span style="opacity:.85">Wi‑Fi</span>
+      <span style="opacity:.85">🔋 82%</span>
+      <span style="opacity:.85">9:41</span>
+    </div>
+  </div>
+
+  <!-- 图标放大示意(帮助判断小尺寸可读性) -->
+  <div class="loupe">
+    <span class="cap">图标 3× 放大示意</span>
+    <div class="big" id="loupeIcon"></div>
+    <div class="note" id="loupeNote"></div>
+  </div>
+
+  <div class="stage-note">
+    <b>原型说明</b><br>
+    数据为占位示例,非真实抓取。<br>
+    阈值取值、图标汇总口径、控制台链接目标均未定(地图雾区)。<br>
+    悬浮/点击行表展开、标签页、按钮均可点。
+  </div>
+
+  <!-- popover 挂点 -->
+  <div class="anchor"><div class="popover" id="popover"></div></div>
+
+  <!-- 通知横幅(临界场景) -->
+  <div class="notif" id="notif" style="display:none">
+    <span class="x" onclick="this.parentNode.style.display='none'">✕</span>
+    <div class="n-app"><span id="nIcon"></span><span>用量监视器</span></div>
+    <div class="n-body" id="nBody"></div>
+    <div class="n-time">现在 · 文案为占位</div>
+  </div>
+</div>
+
+<!-- 底部控制条:可切换 布局 / 场景 / 图标语言 / 外观 -->
+<div class="ctrl">
+  <div class="row1">
+    <span class="tag">PROTOTYPE</span>
+    <span class="g"><span class="gl">布局</span><button class="navbtn" onclick="cycle(-1)">‹</button>
+      <span class="vlabel" id="vlabel"></span>
+      <button class="navbtn" onclick="cycle(1)">›</button></span>
+    <span class="g"><span class="gl">场景</span><span id="sceneGroup"></span></span>
+    <span class="g"><span class="gl">图标</span><span id="iconGroup"></span></span>
+    <span class="g"><span class="gl">外观</span><span id="themeGroup"></span></span>
+    <span class="hlp">← → 切换布局</span>
+  </div>
+  <div class="row2" id="sceneline" style="display:none"></div>
+</div>
+
+<script>
+/* ============ 状态 ============ */
+var S = {
+  variant: new URLSearchParams(location.search).get('variant') || 'A',
+  scene: 'ok',        // ok | critical | cred | missing | fail
+  icon: 'color',      // color | badge | pct
+  theme: 'light',     // light | dark
+  focus: 'glm',       // 变体 C 焦点 provider
+  notifHidden: false,
+};
+var SCENES = [
+  ['ok', '正常'], ['critical', '临界+通知'], ['cred', '凭据失效'], ['missing', '数据缺失'], ['fail', '加载失败'],
+];
+var ICONS = [['color', '色变'], ['badge', '色变+角标'], ['pct', '百分比数字']];
+var VARIANTS = [['A','卡片列表'], ['B','紧凑行表'], ['C','总览+焦点']];
+
+/* ============ 示例数据(占位) ============ */
+function data(scene){
+  var glm = {
+    plan:'Pro · 积分', dot:'.green', st:'正常',
+    w:[
+      {l:'5 小时窗', rem:'10,620', lim:'12,000', u:'积分', r:0.885, note:'重置 每 5 小时'},
+      {l:'7 天窗',   rem:'38,400', lim:'60,000', u:'积分', r:0.64,  note:'重置 09-15 14:00'},
+    ],
+    week:{v:'12,431 积分', miss:false},
+  };
+  var kimi = {
+    plan:'Kimi for Coding', dot:'.green', st:'正常',
+    w:[
+      {l:'日窗口', rem:'66', lim:'100', u:'会话', r:0.66, note:'重置 每日 0:00'},
+      {l:'频限 · 滚动窗(300 分钟)', rem:'113', lim:'200', u:'会话', r:0.565, note:'频限'},
+    ],
+    extra:[['booster 钱包','3.6 次(示例)'], ['并发上限','20']],
+    week:null,
+  };
+  var ds = {
+    plan:'DeepSeek API', dot:'.green', st:'正常',
+    total:'62.47', sub:'充值 ¥59.27 · 赠送 ¥3.20', extra:[['频限','账户级并发上限']],
+    week:null,
+  };
+  if (scene==='critical'){
+    glm.w[1].rem='3,000'; glm.w[1].r=0.05; glm.dot='.red'; glm.st='临界';
+  }
+  if (scene==='missing'){ glm.week.v='—'; glm.week.miss=true; }
+  return {glm:glm, kimi:kimi, ds:ds};
+}
+
+/* 场景 -> 菜单栏图标状态(占位:全局取最低剩余占比,汇总口径未定) */
+function iconState(scene){
+  if (scene==='critical') return {cls:'red', pct:'5%', word:'临界'};
+  if (scene==='cred')     return {cls:'green', pct:'64%', word:'正常'};
+  return {cls:'green', pct:'64%', word:'正常'};
+}
+
+/* ============ 图标绘制 ============ */
+function gaugeSvg(fill, size, stroke){
+  var c = size/2, r = size/2 - stroke - 1;
+  var circ = 2*Math.PI*r;
+  var seg = circ*0.75, gap = circ*0.25;   // 270° 表盘
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'+
+    '<circle cx="'+c+'" cy="'+c+'" r="'+r+'" fill="none" stroke="rgba(255,255,255,.22)" '+
+    'stroke-width="'+stroke+'" stroke-dasharray="'+seg.toFixed(1)+' '+(circ-seg).toFixed(1)+'" '+
+    'stroke-linecap="round" transform="rotate(135 '+c+' '+c+')"/>'+
+    '<circle cx="'+c+'" cy="'+c+'" r="'+r+'" fill="none" stroke="'+fill+'" stroke-width="'+stroke+'" '+
+    'stroke-dasharray="'+(seg*0.64).toFixed(1)+' '+(circ).toFixed(1)+'" stroke-linecap="round" '+
+    'transform="rotate(135 '+c+' '+c+')"/>'+
+    '</svg>';
+}
+function colorOf(cls){ return cls==='red' ? '#ff453a' : (cls==='yellow' ? '#ffd60a' : '#30d158'); }
+
+/* 菜单栏内 20px 图标 */
+function mbIconHTML(){
+  var s = iconState(S.scene); var col = colorOf(s.cls);
+  var inner;
+  if (S.icon==='pct'){
+    inner = '<span style="font-size:8.5px;font-weight:700;color:'+col+';font-variant-numeric:tabular-nums">'+
+            (S.scene==='critical'?'5%':'64%')+'</span>';
+  } else {
+    inner = gaugeSvg(col, 20, 3.4);
+  }
+  var badge = (S.icon==='badge' && S.scene==='critical')
+    ? '<span class="mb-dot on"></span>' : (S.icon==='badge' ? '<span class="mb-dot"></span>' : '');
+  return '<span class="mb-wrap">'+
+    '<span class="mbicon" style="background:rgba(255,255,255,.14);border-radius:6px">'+inner+'</span>'+
+    badge+'</span>';
+}
+/* 放大示意 */
+function loupeHTML(){
+  var s = iconState(S.scene); var col = colorOf(s.cls);
+  var big;
+  if (S.icon==='pct'){
+    big = '<span style="font-size:34px;font-weight:700;color:'+col+';font-variant-numeric:tabular-nums">'+
+          (S.scene==='critical'?'5%':'64%')+'</span>';
+  } else {
+    big = gaugeSvg(col, 72, 7);
+  }
+  var badge = (S.icon==='badge' && S.scene==='critical')
+    ? '<span class="mb-dot" style="width:15px;height:15px;border-width:3px;top:1px;right:1px;background:var(--red)"></span>' : '';
+  return '<span class="mb-wrap" style="display:inline-flex">'+
+    '<span style="display:inline-flex;align-items:center;justify-content:center;width:76px;height:76px;'+
+    'background:rgba(0,0,0,.35);border-radius:17px">'+big+'</span>'+badge+'</span>';
+}
+
+/* ============ 共享小块 ============ */
+function stTag(dot, txt){ return '<span class="st '+dot+'"><i></i>'+txt+'</span>'; }
+function bar(r){ return '<div class="bar"><i style="width:'+Math.round(r*100)+'%"></i></div>'; }
+function wrow(w){ return '<div class="wrow"><div class="lbl"><span>'+w.l+'</span>'+
+  '<span><b>'+w.rem+'</b> / '+w.lim+' <span style="color:var(--sub);font-weight:400">'+w.u+'</span></span></div>'+
+  bar(w.r)+'</div>'; }
+function weekRow(g){
+  var v = g.week ? g.week.v : null;
+  if (v===null) return '';
+  return '<div class="subrow"><span>近 7 天用量</span><span>'+
+    (g.week.miss ? '<span class="dash">'+v+'</span> <span class="muted">获取失败</span>'
+                 : '<b>'+v+'</b>')+'</span></div>';
+}
+function controlLink(){ return '<a class="link" onclick="toast(\'链接目标为占位:实现时核对官方控制台地址\')">控制台 ↗</a>'; }
+
+/* ============ 变体 A:单列大卡片 ============ */
+function cardA(p){
+  return '<div class="card"><div class="c-head"><span class="st '+p.dot+'"><i></i></span>'+
+    '<span class="c-name">'+p.name+'</span><span class="pill">'+p.plan+'</span>'+
+    '<span style="flex:1"></span>'+stTag(p.dot, p.st)+'</div>'+
+    p.w.map(wrow).join('') + p.extraRows + weekRow(p.g) +
+    '<div class="c-foot"><span>'+p.foot+'</span>'+controlLink()+'</div></div>';
+}
+function renderA(d){
+  var body =
+    cardA({name:'GLM Coding Plan', plan:d.glm.plan, dot:d.glm.dot, st:d.glm.st, w:d.glm.w, g:d.glm,
+           extraRows:'', foot:'重置:'+d.glm.w.map(function(x){return x.note}).join(' · ')}) +
+    cardA({name:'Kimi for Coding', plan:'套餐 · 会话', dot:d.kimi.dot, st:d.kimi.st, w:d.kimi.w, g:d.kimi,
+           extraRows:rowsOf(d.kimi.extra), foot:'重置:每日 0:00 · 滚动 300 分钟'}) +
+    cardA({name:'DeepSeek', plan:'API · 余额', dot:d.ds.dot, st:d.ds.st, w:[], g:d.ds,
+           extraRows:'<div class="balance-big" style="margin:2px 0 6px"><span>¥'+d.ds.total+'</span></div>'+
+             '<div class="subrow"><span>构成</span><span style="color:var(--sub)">'+d.ds.sub+'</span></div>'+
+             rowsOf(d.ds.extra),
+           foot:'无周期额度 · 余额档位判状态'});
+  return '<div class="pop-head"><span class="t">用量监视器</span><span class="sp"></span>'+
+    refreshBtn()+'<button class="ibtn" onclick="toast(\'设置入口(形态见「凭据设置界面原型」票)\')">⚙︎</button></div>'+
+    '<div class="pop-body">'+body+'</div>'+footBar();
+}
+function rowsOf(rows){
+  if(!rows) return '';
+  return rows.map(function(r){
+    return '<div class="subrow"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>';
+  }).join('');
+}
+
+/* ============ 变体 B:紧凑行表(点击展开) ============ */
+function renderB(d){
+  function rowOf(key, name, plan, dot, st, one, miniR, detail){
+    return '<div class="row" data-open="'+key+'"><div class="r-main">'+
+      '<span class="st '+dot+'"><i></i></span>'+
+      '<span class="nm">'+name+'<span class="meta">'+plan+'</span></span>'+
+      '<span class="rem">'+one+'</span>'+
+      '<span class="mini"><div class="bar"><i style="width:'+Math.round(miniR*100)+'%;background:'+
+        (miniR<0.15?'var(--red)':'var(--fill)')+'"></i></div></span>'+
+      '<span class="chev">▾</span></div>'+
+      '<div class="r-detail">'+detail+'</div></div>';
+  }
+  var glmD = '<div style="margin-bottom:6px">'+
+      d.glm.w.map(wrow).join('') + weekRow(d.glm) +
+      '<div class="c-foot" style="margin-top:4px"><span>重置:每 5 小时 · 09-15 14:00</span>'+controlLink()+'</div></div>';
+  var kimiD = d.kimi.w.map(wrow).join('') + rowsOf(d.kimi.extra) +
+      '<div class="c-foot" style="margin-top:4px"><span>重置:每日 0:00 · 滚动 300 分钟</span>'+controlLink()+'</div>';
+  var dsD = '<div class="balance-big" style="margin:2px 0 6px"><span>¥'+d.ds.total+'</span></div>'+
+      '<div class="subrow"><span>构成</span><span style="color:var(--sub)">'+d.ds.sub+'</span></div>'+
+      rowsOf(d.ds.extra)+
+      '<div class="c-foot" style="margin-top:4px"><span>无周期额度</span>'+controlLink()+'</div>';
+  return '<div class="pop-head"><span class="t">用量监视器</span><span class="sp"></span>'+refreshBtn()+
+    '<button class="ibtn" onclick="toast(\'设置入口(形态见「凭据设置界面原型」票)\')">⚙︎</button></div>'+
+    '<div class="pop-body"><div class="rows">'+
+    rowOf('glm','GLM Coding Plan','Pro · 积分', d.glm.dot, d.glm.st,
+          '<b>'+d.glm.w[1].rem+'</b> 积分', d.glm.w[1].r, glmD) +
+    rowOf('kimi','Kimi for Coding','套餐 · 会话', d.kimi.dot, d.kimi.st,
+          '<b>'+d.kimi.w[0].rem+'</b> 会话', d.kimi.w[0].r, kimiD) +
+    rowOf('ds','DeepSeek','API · 余额', d.ds.dot, d.ds.st,
+          '<b>¥'+d.ds.total+'</b>', 0.64, dsD) +
+    '</div></div>'+footBar();
+}
+
+/* ============ 变体 C:总览条 + 焦点面板 ============ */
+function renderC(d){
+  var worst = S.scene==='critical' ? {name:'GLM Coding Plan', pct:'5%', cls:'.red', word:'临界'} :
+              {name:'GLM Coding Plan', pct:'64%', cls:'.green', word:'正常'};
+  var col = colorOf(worst.cls.replace('.',''));
+  function focusOf(key){
+    if (key==='glm') return focCard('GLM Coding Plan', d.glm, d.glm.w, d.glm,
+      '<div class="c-foot" style="margin-top:4px"><span>重置:每 5 小时 · 09-15 14:00</span></div>');
+    if (key==='kimi') return focCard('Kimi for Coding', d.kimi, d.kimi.w, d.kimi,
+      rowsOf(d.kimi.extra)+'<div class="c-foot" style="margin-top:4px"><span>重置:每日 0:00 · 滚动 300 分钟</span></div>');
+    return focCard('DeepSeek', d.ds, [], d.ds,
+      '<div class="balance-big" style="margin:2px 0 6px"><span>¥'+d.ds.total+'</span></div>'+
+      '<div class="subrow"><span>构成</span><span style="color:var(--sub)">'+d.ds.sub+'</span></div>'+
+      rowsOf(d.ds.extra));
+  }
+  function focCard(name, g, w, p, extra){
+    return '<div class="foc-card"><div class="foc-head"><span class="st '+p.dot+'"><i></i></span>'+
+      '<span class="c-name">'+name+'</span><span class="pill">'+p.plan+'</span><span style="flex:1"></span>'+
+      stTag(p.dot, p.st)+'</div>'+
+      (w.length? w.map(wrow).join('') : '') + extra + weekRow(g) +
+      '<div class="foc-actions"><button class="fbtn" onclick="toast(\'刷新动作(占位)\')">刷新</button>'+
+      '<button class="fbtn" onclick="toast(\'链接目标为占位:实现时核对官方控制台地址\')">控制台 ↗</button></div></div>';
+  }
+  return '<div class="pop-head"><span class="t">用量监视器</span><span class="sp"></span>'+
+    '<button class="ibtn" onclick="toast(\'设置入口(形态见「凭据设置界面原型」票)\')">⚙︎</button></div>'+
+    '<div class="pop-body">'+
+    '<div class="ov"><span class="bigdot" style="background:'+col+'">'+
+      (worst.word==='临界'?'!':'✓')+'</span>'+
+      '<span class="txt">全局最紧:<b>'+worst.name+'</b> 剩余 '+worst.pct+
+      (worst.word==='临界'?' · <b style="color:var(--red)">已达临界</b>':'')+
+      '<br>汇总口径未定(占位取最低剩余占比)</span></div>'+
+    '<div class="tabs">'+['glm','kimi','ds'].map(function(k){
+      var n = {glm:'GLM', kimi:'Kimi', ds:'DeepSeek'}[k];
+      return '<button class="tab'+(S.focus===k?' on':'')+'" data-tab="'+k+'">'+n+'</button>';
+    }).join('')+'</div>'+
+    focusOf(S.focus)+'</div>'+footBar();
+}
+
+/* 全局焦点卡片(errScene 复用,与 renderC 内版本同构) */
+function focCardG(name, g, w, p, extra){
+  return '<div class="foc-card"><div class="foc-head"><span class="st '+p.dot+'"><i></i></span>'+
+    '<span class="c-name">'+name+'</span><span class="pill">'+p.plan+'</span><span style="flex:1"></span>'+
+    stTag(p.dot, p.st)+'</div>'+
+    (w.length? w.map(wrow).join('') : '') + extra + weekRow(g) +
+    '<div class="foc-actions"><button class="fbtn" onclick="toast(\'刷新动作(占位)\')">刷新</button>'+
+    '<button class="fbtn" onclick="toast(\'链接目标为占位:实现时核对官方控制台地址\')">控制台 ↗</button></div></div>';
+}
+/* 错误场景下的变体 C:总览条 + 标签页,失效/失败 provider 的焦点面板显示错误卡 */
+function errScene(kind){
+  var d = data('ok');
+  var dead = kind==='cred' ? 'kimi' : 'glm';
+  var healthyWorst = kind==='cred' ? ['GLM Coding Plan','64%'] : ['Kimi for Coding','66%'];
+  var note = kind==='cred'
+    ? 'Kimi for Coding 凭据失效,不计入 · 汇总口径未定(占位)'
+    : 'GLM Coding Plan 加载失败,不计入 · 汇总口径未定(占位)';
+  var panel;
+  if (S.focus===dead){ panel = errCard(kind); }
+  else if (S.focus==='glm') panel = focCardG('GLM Coding Plan', d.glm, d.glm.w, d.glm,
+    '<div class="c-foot" style="margin-top:4px"><span>重置:每 5 小时 · 09-15 14:00</span></div>');
+  else if (S.focus==='kimi') panel = focCardG('Kimi for Coding', d.kimi, d.kimi.w, d.kimi,
+    rowsOf(d.kimi.extra)+'<div class="c-foot" style="margin-top:4px"><span>重置:每日 0:00 · 滚动 300 分钟</span></div>');
+  else panel = focCardG('DeepSeek', d.ds, [], d.ds,
+    '<div class="balance-big" style="margin:2px 0 6px"><span>¥'+d.ds.total+'</span></div>'+
+    '<div class="subrow"><span>构成</span><span style="color:var(--sub)">'+d.ds.sub+'</span></div>'+
+    rowsOf(d.ds.extra));
+  var tabs = ['glm','kimi','ds'].map(function(k){
+    var n = {glm:'GLM', kimi:'Kimi', ds:'DeepSeek'}[k];
+    return '<button class="tab'+(S.focus===k?' on':'')+'" data-tab="'+k+'">'+n+'</button>';
+  }).join('');
+  return head()+
+    '<div class="pop-body">'+
+    '<div class="ov"><span class="bigdot" style="background:#30d158">✓</span>'+
+    '<span class="txt">全局最紧:<b>'+healthyWorst[0]+'</b> 剩余 '+healthyWorst[1]+
+    '<br>'+note+'</span></div>'+
+    '<div class="tabs">'+tabs+'</div>'+panel+'</div>'+footBar();
+}
+
+function refreshBtn(){ return '<button class="ibtn" onclick="spinRefresh(this)">'+refreshSVG()+'</button>'; }
+function refreshSVG(){ return '<svg width="14" height="14" viewBox="0 0 14 14" fill="none">'+
+  '<path d="M11.5 7a4.5 4.5 0 1 1-1.32-3.18" stroke="currentColor" stroke-width="1.6" '+
+  'stroke-linecap="round"/><path d="M11.8 1.6v2.4H9.4" stroke="currentColor" stroke-width="1.6" '+
+  'stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function footBar(){
+  return '<div class="pop-foot">上次更新 <b>09:41</b><span class="sp"></span>自动刷新 30 分(示例)<span class="sp"></span>'+
+    '<button class="ibtn" style="width:auto;padding:0 6px;font-size:11px" onclick="toast(\'间隔策略见「刷新与缓存策略」票\')">刷新策略</button></div>';
+}
+function spinRefresh(btn){ btn.classList.add('spin'); setTimeout(function(){btn.classList.remove('spin');},900); }
+
+/* ============ 错误态卡片 ============ */
+function errCard(kind){
+  if (kind==='cred') return '<div class="card"><div class="c-head"><span class="c-name">Kimi for Coding</span>'+
+    '<span class="pill">套餐 · 会话</span></div>'+
+    '<div class="err-card"><div class="ic">⚠️</div><div class="msg">凭据失效或未配置</div>'+
+    '<div class="sub-msg">该 provider 无法拉取用量<br>请到设置中重新填写凭据</div>'+
+    '<div class="act"><button class="btn primary" onclick="toast(\'去设置:直达路径随「凭据设置界面原型」定\')">去设置</button>'+
+    '<button class="btn plain" onclick="toast(\'重试(占位)\')">重试</button></div></div>'+
+    '<div class="c-foot"><span>状态:可用性维度,不计入用量 status</span></div></div>';
+  if (kind==='fail') return '<div class="card"><div class="c-head"><span class="c-name">GLM Coding Plan</span>'+
+    '<span class="pill">Pro · 积分</span></div>'+
+    '<div class="err-card"><div class="ic">⚠️</div><div class="msg">加载失败</div>'+
+    '<div class="sub-msg">网络错误或接口超时<br>上次成功:09:12</div>'+
+    '<div class="act"><button class="btn primary" onclick="spinRefresh(this)">重试</button></div></div>'+
+    '<div class="c-foot"><span>区分 authError / networkError</span></div></div>';
+  return '';
+}
+
+/* ============ 组装 ============ */
+function render(){
+  var d = data(S.scene);
+  var html, body;
+  if (S.scene==='cred'){
+    var credCard = errCard('cred');
+    if (S.variant==='C'){ html = errScene('cred'); }
+    else if (S.variant==='B'){
+      body = '<div class="rows">'+
+        '<div class="row open"><div class="r-main"><span class="st .green"><i></i></span>'+
+        '<span class="nm">GLM Coding Plan<span class="meta">Pro · 积分</span></span>'+
+        '<span class="rem"><b>38,400</b> 积分</span><span class="mini">'+barHtml(0.64)+'</span>'+
+        '<span class="chev">▾</span></div><div class="r-detail">'+d.glm.w.map(wrow).join('')+
+        weekRow(d.glm)+'</div></div>'+
+        '<div class="row"><div class="r-main" style="cursor:default"><span class="st .green"><i></i></span>'+
+        '<span class="nm">DeepSeek<span class="meta">API · 余额</span></span>'+
+        '<span class="rem"><b>¥'+d.ds.total+'</b></span><span class="mini"></span></div></div></div>'+
+        credCard.replace('class="card"','class="card" style="margin-top:9px"');
+      html = head()+'<div class="pop-body">'+body+'</div>'+footBar();
+    } else {
+      body = cardA({name:'GLM Coding Plan', plan:d.glm.plan, dot:d.glm.dot, st:d.glm.st, w:d.glm.w, g:d.glm, extraRows:'', foot:'重置:每 5 小时 · 09-15 14:00'}) +
+        credCard +
+        cardA({name:'DeepSeek', plan:'API · 余额', dot:d.ds.dot, st:d.ds.st, w:[], g:d.ds,
+          extraRows:'<div class="balance-big" style="margin:2px 0 6px"><span>¥'+d.ds.total+'</span></div>'+
+            '<div class="subrow"><span>构成</span><span style="color:var(--sub)">'+d.ds.sub+'</span></div>', foot:'无周期额度'});
+      html = head()+'<div class="pop-body">'+body+'</div>'+footBar();
+    }
+  }
+  else if (S.scene==='fail'){
+    d.glm = null;
+    var failCard = errCard('fail');
+    if (S.variant==='C'){ html = errScene('fail'); }
+    else if (S.variant==='B'){
+      body = '<div class="rows">'+
+        '<div class="row open"><div class="r-main" style="cursor:default"><span class="st .green"><i></i></span>'+
+        '<span class="nm">Kimi for Coding<span class="meta">套餐 · 会话</span></span>'+
+        '<span class="rem"><b>66</b> 会话</span><span class="mini">'+barHtml(0.66)+'</span></div>'+
+        '<div class="r-detail">'+d.kimi.w.map(wrow).join('')+'</div></div></div>'+
+        failCard.replace('class="card"','class="card" style="margin-top:9px"');
+      html = head()+'<div class="pop-body">'+body+'</div>'+footBar();
+    } else {
+      body = failCard +
+        cardA({name:'Kimi for Coding', plan:'套餐 · 会话', dot:d.kimi.dot, st:d.kimi.st, w:d.kimi.w, g:d.kimi,
+          extraRows:rowsOf(d.kimi.extra), foot:'重置:每日 0:00 · 滚动 300 分钟'}) +
+        cardA({name:'DeepSeek', plan:'API · 余额', dot:d.ds.dot, st:d.ds.st, w:[], g:d.ds,
+          extraRows:'<div class="balance-big" style="margin:2px 0 6px"><span>¥'+d.ds.total+'</span></div>'+
+            '<div class="subrow"><span>构成</span><span style="color:var(--sub)">'+d.ds.sub+'</span></div>', foot:'无周期额度'});
+      html = head()+'<div class="pop-body">'+body+'</div>'+footBar();
+    }
+  }
+  else {
+    if (S.variant==='A') html = renderA(d);
+    else if (S.variant==='B') html = renderB(d);
+    else html = renderC(d);
+  }
+  if (S.variant==='A' || S.variant==='B') {
+    // 无特殊
+  }
+  document.getElementById('popover').innerHTML = html + '<div class="arrow"></div>';
+  document.getElementById('mbAppIcon').innerHTML = mbIconHTML();
+  document.getElementById('loupeIcon').innerHTML = loupeHTML();
+  document.getElementById('loupeNote').textContent =
+    '当前:'+iconState(S.scene).word+' · '+iconState(S.scene).pct+' (汇总口径未定)';
+  document.getElementById('notif').style.display =
+    (S.scene==='critical' && !S.notifHidden) ? 'block' : 'none';
+  if (S.scene==='critical'){
+    document.getElementById('nBody').innerHTML =
+      '<b>GLM Coding Plan</b> 剩余 3,000 积分(5%),已达临界。<br>文案与阈值为占位(取值后续票定)。';
+    document.getElementById('nIcon').innerHTML = gaugeSvg('#ff453a',16,2.6);
+  }
+  var vi = VARIANTS.findIndex(function(v){return v[0]===S.variant;});
+  document.getElementById('vlabel').textContent = S.variant+' · '+VARIANTS[vi][1];
+  renderGroups();
+}
+function head(){ return '<div class="pop-head"><span class="t">用量监视器</span><span class="sp"></span>'+refreshBtn()+
+  '<button class="ibtn" onclick="toast(\'设置入口(形态见「凭据设置界面原型」票)\')">⚙︎</button></div>'; }
+function barHtml(r){ return '<div class="bar"><i style="width:'+Math.round(r*100)+'%"></i></div>'; }
+
+/* 控制条分组 */
+function chipGroup(elId, items, curKey, fn){
+  var el = document.getElementById(elId);
+  el.innerHTML = items.map(function(it){
+    return '<button class="chip'+(it[0]===curKey?' on':'')+'" data-k="'+it[0]+'">'+it[1]+'</button>';
+  }).join('');
+  el.querySelectorAll('.chip').forEach(function(c){
+    c.onclick = function(){ fn(c.getAttribute('data-k')); };
+  });
+}
+function renderGroups(){
+  chipGroup('sceneGroup', SCENES, S.scene, function(k){ S.scene=k; S.notifHidden=false; S.focus='glm'; render(); });
+  chipGroup('iconGroup', ICONS, S.icon, function(k){ S.icon=k; render(); });
+  chipGroup('themeGroup', [['light','浅色'],['dark','深色']], S.theme, function(k){
+    S.theme=k; document.documentElement.className = 'theme-'+k; render();
+  });
+}
+function cycle(dir){
+  var i = VARIANTS.findIndex(function(v){return v[0]===S.variant;});
+  S.variant = VARIANTS[(i+dir+VARIANTS.length)%VARIANTS.length][0];
+  history.replaceState(null,'','?variant='+S.variant);
+  render();
+}
+/* 行表展开(事件委托) */
+document.addEventListener('click', function(e){
+  var t = e.target.closest('[data-open]');
+  if (t){ t.classList.toggle('open'); return; }
+  var tb = e.target.closest('[data-tab]');
+  if (tb){ S.focus = tb.getAttribute('data-tab'); render(); }
+});
+/* 键盘 ← → 切布局 */
+document.addEventListener('keydown', function(e){
+  if (e.target.closest('button') && (e.key==='ArrowLeft'||e.key==='ArrowRight')) return;
+  if (e.key==='ArrowLeft') cycle(-1);
+  if (e.key==='ArrowRight') cycle(1);
+});
+/* toast */
+function toast(msg){
+  var t = document.getElementById('toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id='toast';
+    t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:130px;z-index:99;'+
+      'background:rgba(24,24,28,.94);color:#fff;font-size:12px;padding:8px 14px;border-radius:9px;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:70vw';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.display='none'; }, 2200);
+  t.style.display='block';
+}
+
+render();
+</script>
+</body>
+</html>
