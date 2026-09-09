@@ -40,7 +40,7 @@ _Avoid_: 点数、额度(「额度」指 limit 总量,不是单位)
 _Avoid_: 本周用量、周用量(文案统一「近 7 天」)、估算
 
 **status 健康状态**:
-由快照推导的 provider 级状态:normal / low / critical。规则:取全部额度窗口剩余百分比的最低值;无窗口的 provider(DeepSeek)单独按余额档位规则。阈值参数化,UI 只消费不计算。
+由快照推导的 provider 级状态:normal / low / critical。规则:取该 provider 全部 plan-window 类额度窗口剩余百分比的最低值(rate-limit 频限窗不参与,仅卡片展示);无窗口的 provider(DeepSeek)单独按余额档位规则(金额分界参数化)。阈值参数化(默认分界见「图标汇总口径与阈值取值」决议),UI 只消费不计算。
 
 **credential 凭据**:
 provider 侧的访问凭证:DeepSeek 的 API key、Kimi for Coding 的 token、GLM Coding Plan 的 API key。用户在本 app 的设置界面配置,app 不依赖任何外部登录态;值只在进程内存在,由数据层消费,UI 只感知「已配置 / 缺失 / 失效」状态、不感知值。凭据失效是 provider 可用性问题,不参与 status 的用量语义。
