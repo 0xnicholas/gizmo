@@ -155,23 +155,29 @@ public enum Money {
 
     public static func format(_ amount: Decimal) -> String {
         let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.locale = displayLocale
         formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = 2
-        formatter.groupingSeparator = ","
-        formatter.usesGroupingSeparator = false
+        formatter.usesGroupingSeparator = true
         return formatter.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
+    }
+
+    /// 额度数量的分组展示(窗口剩余/总量、近 7 天 tokens)。
+    public static func formatCount(_ value: Int) -> String {
+        formatCount(Double(value))
     }
 
     /// 计数型大数的分组展示(近 7 天 tokens)。
     public static func formatCount(_ value: Double) -> String {
         let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.locale = displayLocale
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 0
-        formatter.groupingSeparator = ","
         formatter.usesGroupingSeparator = true
         return formatter.string(from: NSNumber(value: value)) ?? String(Int(value))
     }
+
+    /// 展示区域用 en_US(POSIX 区域不做千位分组);解析仍用 `en_US_POSIX` 的显式小数点。
+    private static let displayLocale = Locale(identifier: "en_US")
 }

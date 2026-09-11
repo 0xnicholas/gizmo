@@ -113,15 +113,15 @@ struct PopoverView: View {
     }
 
     private var firstPendingProvider: Provider? {
-        Provider.allCases.first { state.provider($0).credential == .invalid }
-            ?? Provider.allCases.first { state.provider($0).credential == .missing }
+        Provider.displayOrder.first { state.provider($0).credential == .invalid }
+            ?? Provider.displayOrder.first { state.provider($0).credential == .missing }
     }
 
     // MARK: - 标签页
 
     private var providerTabs: some View {
         HStack(spacing: 4) {
-            ForEach(Provider.allCases, id: \.self) { provider in
+            ForEach(Provider.displayOrder, id: \.self) { provider in
                 Button {
                     model.focusProvider = provider
                 } label: {
@@ -167,7 +167,7 @@ struct PopoverView: View {
             Text("凭据")
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.secondary)
-            ForEach(Provider.allCases, id: \.self) { provider in
+            ForEach(Provider.displayOrder, id: \.self) { provider in
                 HStack(spacing: 6) {
                     Circle()
                         .fill(credentialColor(state.provider(provider).credential))
@@ -251,6 +251,11 @@ struct GlobalOverviewBar: View {
                 Text(subtitle)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
+                if let alertLine {
+                    Text(alertLine)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Presentation.color(for: state.overview.worstStatus))
+                }
             }
             Spacer()
         }
@@ -273,13 +278,31 @@ struct GlobalOverviewBar: View {
         guard let tightest = state.overview.tightest else {
             return "菜单栏图标显示「—」,直到有套餐窗口数据"
         }
-        var text = "剩余 \(tightest.remaining) / \(tightest.limit) \(tightest.unit)(\(tightest.displayPercent)%)"
+        var text = "剩余 \(Money.formatCount(tightest.remaining)) / \(Money.formatCount(tightest.limit)) \(tightest.unit)(\(tightest.displayPercent)%)"
         if let reset = Presentation.resetText(tightest.resetAt) {
             text += " · \(reset)"
         }
-        if state.overview.worstStatus == .critical {
-            text += " · 已达临界"
-        }
         return text
+    }
+
+    /// 临界/偏低的落点单独一行:最紧的窗口未必就是拉低颜色的那家
+    /// (如 DeepSeek 无窗口、按余额分界),避免把结论挂错行。
+    private var alertLine: String? {
+        let criticals = providers(withStatus: .critical)
+        if !criticals.isEmpty {
+            return "已达临界:" + criticals.map(\.displayName).joined(separator: "、")
+        }
+        let lows = providers(withStatus: .low)
+        if !lows.isEmpty {
+            return "偏低:" + lows.map(\.displayName).joined(separator: "、")
+        }
+        return nil
+    }
+
+    private func providers(withStatus status: ProviderStatus) -> [Provider] {
+        Provider.displayOrder.filter { provider in
+            let runtime = state.provider(provider)
+            return runtime.hasSnapshot && runtime.credential == .configured && runtime.status == status
+        }
     }
 }

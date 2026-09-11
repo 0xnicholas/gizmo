@@ -80,6 +80,13 @@ final class AppModel: ObservableObject {
         }
     }
 
+    #if DEBUG
+    /// 仅供开发期离屏渲染与 SwiftUI 预览注入样例状态(发布路径不受影响)。
+    func injectPreviewState(_ state: EngineState) {
+        self.state = state
+    }
+    #endif
+
     // MARK: - 生命周期
 
     func start() {

@@ -10,14 +10,15 @@ enum PreviewData {
         _ provider: Provider,
         snapshot: Snapshot?,
         credential: CredentialState = .configured,
-        status: ProviderStatus = .normal,
+        status: ProviderStatus? = nil,
         loadFailed: Bool = false,
         consecutiveFailures: Int = 0
     ) -> ProviderRuntimeState {
         var runtime = ProviderRuntimeState(provider: provider)
         runtime.snapshot = snapshot
         runtime.credential = credential
-        runtime.status = status
+        // 样例状态也走真实推导,避免预览与引擎行为不一致
+        runtime.status = status ?? snapshot.map { StatusEvaluator().status(for: $0) } ?? .normal
         runtime.loadFailed = loadFailed
         runtime.consecutiveFailures = consecutiveFailures
         runtime.lastSuccessAt = snapshot?.meta.fetchedAt
@@ -64,12 +65,42 @@ enum PreviewData {
         )
     }
 
+    /// 全新安装:三家都未配置。
+    static func freshState() -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        for provider in Provider.displayOrder {
+            providers[provider] = runtime(provider, snapshot: nil, credential: .missing)
+        }
+        return EngineState(providers: providers)
+    }
+
+    /// 错误形态:Kimi 凭据失效、GLM 加载失败(仍持有旧数据)、DeepSeek 未配置。
+    static func errorState() -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(
+            .glm,
+            snapshot: glm(rollingUsage: .failed, weeklyRemaining: 2_000),
+            loadFailed: true,
+            consecutiveFailures: 3
+        )
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66), credential: .invalid)
+        providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: fetchedAt,
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator()
+            )
+        )
+    }
+
     static func overviewState() -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
         let glmSnapshot = glm()
-        providers[.glm] = runtime(.glm, snapshot: glmSnapshot, status: .normal)
-        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66), status: .normal)
-        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(), status: .critical)
+        providers[.glm] = runtime(.glm, snapshot: glmSnapshot)
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66))
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek())
         return EngineState(
             providers: providers,
             lastRefreshStartedAt: fetchedAt,

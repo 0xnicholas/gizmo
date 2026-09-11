@@ -183,10 +183,10 @@ struct QuotaWindowRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(window.remaining)")
+                Text(Money.formatCount(window.remaining))
                     .font(.system(size: 11.5, weight: .semibold))
                     .monospacedDigit()
-                Text("/ \(window.limit) \(window.unit)")
+                Text("/ \(Money.formatCount(window.limit)) \(window.unit)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -280,7 +280,7 @@ struct CredentialPlaceholder: View {
 
     var body: some View {
         VStack(spacing: 7) {
-            Image(systemName: "key.slash")
+            Image(systemName: "key")
                 .font(.system(size: 20))
                 .foregroundStyle(.secondary)
             Text(title)

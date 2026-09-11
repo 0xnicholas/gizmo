@@ -29,6 +29,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // accessory:无 Dock 图标、不占 Cmd-Tab。
         NSApplication.shared.setActivationPolicy(.accessory)
 
+        #if DEBUG
+        // 开发期离屏渲染真实视图(--render-previews <目录>),不进入常驻路径。
+        if DevPreviewRenderer.runIfRequested() {
+            NSApplication.shared.terminate(nil)
+            return
+        }
+        #endif
+
         // 登录自启的 plist 会 RunAtLoad 拉起新实例;已有实例在跑时直接退出。
         guard isOnlyInstance else {
             NSApplication.shared.terminate(nil)

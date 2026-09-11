@@ -26,7 +26,7 @@ struct SettingsWindowView: View {
                 model.settingsSelection = .general
             }
             Divider().padding(.vertical, 4)
-            ForEach(Provider.allCases, id: \.self) { provider in
+            ForEach(Provider.displayOrder, id: \.self) { provider in
                 sidebarRow(title: provider.displayName, selected: model.settingsSelection == .provider(provider)) {
                     model.settingsSelection = .provider(provider)
                     model.settingsArrivalBanner = false

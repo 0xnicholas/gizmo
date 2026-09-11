@@ -1,6 +1,10 @@
 import Foundation
 
 extension Provider {
+    /// 界面展示顺序:GLM / Kimi / DeepSeek(用户故事 20 的标签页顺序)。
+    /// 与 `allCases` 分开,后者是枚举声明顺序,供引擎与文件编码保持确定性。
+    public static let displayOrder: [Provider] = [.glm, .kimi, .deepseek]
+
     /// 界面与通知文案中的显示名。
     public var displayName: String {
         switch self {

@@ -27,3 +27,20 @@ struct PercentTests {
         #expect(tightest.displayPercent == 1)  // 0.3% → 图标与总览条都显示 1%
     }
 }
+
+@Suite("展示格式化")
+struct MoneyFormatTests {
+    @Test("额度数量带千位分隔符")
+    func countGrouping() {
+        #expect(Money.formatCount(15_929) == "15,929")
+        #expect(Money.formatCount(12_000) == "12,000")
+        #expect(Money.formatCount(7_500_000) == "7,500,000")
+        #expect(Money.formatCount(0) == "0")
+    }
+
+    @Test("金额两位小数 + 币种符号")
+    func moneyFormatting() {
+        #expect(Money.format(Decimal(string: "62.4", locale: Locale(identifier: "en_US_POSIX"))!, currency: "CNY") == "¥62.40")
+        #expect(Money.format(Decimal(3), currency: "USD") == "$3.00")
+    }
+}
