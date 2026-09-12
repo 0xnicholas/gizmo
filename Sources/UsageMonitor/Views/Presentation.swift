@@ -66,6 +66,12 @@ enum Presentation {
         "重置 " + resetFormatter.string(from: resetAt)
     }
 
+    /// 次级频限行的 tooltip:带日期的完整恢复时刻(行内只显 HH:mm,跨天时消歧;
+    /// 不用「重置」措辞,与频限区口径一致)。
+    static func recoveryMoment(_ resetAt: Date) -> String {
+        "容量恢复 " + resetFormatter.string(from: resetAt)
+    }
+
     /// 脚注「上次更新」:<1h「N 分钟前更新」(向下取整,最低 1);≥1h 或时钟倒漂退回绝对。
     static func updatedAgo(_ at: Date, now: Date) -> String {
         let seconds = now.timeIntervalSince(at)
@@ -73,6 +79,23 @@ enum Presentation {
             return "上次更新 " + time(at)
         }
         return "\(max(1, Int(seconds / 60))) 分钟前更新"
+    }
+
+    // MARK: - 域码展示名(P2-9,FC-6)
+
+    /// 已知内部域码 → 展示名;未知值原样透传(展示层映射,不动解析层)。
+    static func domainDisplayName(_ raw: String) -> String {
+        switch raw {
+        case "DOMAIN_NEXUS": return "Nexus"
+        default: return raw
+        }
+    }
+
+    /// 胶囊 tooltip:服务域展示名 + 括注内部码(排查时对得上后端字段);
+    /// 未知域码不重复自身。
+    static func planDomainHelp(_ domain: String) -> String {
+        let name = domainDisplayName(domain)
+        return name == domain ? "服务域:\(domain)" : "服务域:\(name)(\(domain))"
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -132,6 +155,45 @@ struct RefreshFooterPresentation {
         highlightsUpdatedText = !isRefreshing && refreshFinishedAt.map { finished in
             finished <= now && now.timeIntervalSince(finished) < Self.highlightDuration
         } == true
+    }
+}
+
+/// 频限次级单行(P2-6,FC-3):「频限 90/100 请求 · 滚动 300 分钟 · 容量恢复 08:56」——
+/// 不带进度条、不沿用「重置」一词(滚动窗是容量随时间滑出恢复,不是额度重置);
+/// 滚动跨度取自解析层 label「频限 · 滚动窗(300 分钟)」的括号段,缺失时省略。
+/// 失败态快照的恢复时刻已过时降级标注(与主区 resetLine 同语义,不假装有效)。
+struct RateLimitFactLine {
+    let text: String
+    /// tooltip:带日期的完整恢复时刻(行内只显 HH:mm,跨天时靠 tooltip 消歧);
+    /// 无 resetAt 或已降级标注时 nil。
+    let help: String?
+
+    init(window: QuotaWindow, fromFailedSnapshot: Bool = false, now: Date = Date()) {
+        var parts = ["频限 \(Money.formatCount(window.remaining))/\(Money.formatCount(window.limit)) \(window.unit)"]
+        if let span = Self.rollingSpan(fromLabel: window.label) {
+            parts.append(span)
+        }
+        if let resetAt = window.resetAt {
+            if fromFailedSnapshot, resetAt <= now {
+                parts.append("容量恢复已过期(最后成功快照)")
+                help = nil
+            } else {
+                parts.append("容量恢复 " + Presentation.time(resetAt))
+                help = Presentation.recoveryMoment(resetAt)
+            }
+        } else {
+            help = nil
+        }
+        text = parts.joined(separator: " · ")
+    }
+
+    /// label「频限 · 滚动窗(300 分钟)」→「滚动 300 分钟」;无括号段 → nil。
+    static func rollingSpan(fromLabel label: String) -> String? {
+        guard let open = label.firstIndex(of: "("),
+              let close = label.lastIndex(of: ")"),
+              open < close
+        else { return nil }
+        return "滚动 " + label[label.index(after: open)..<close]
     }
 }
 

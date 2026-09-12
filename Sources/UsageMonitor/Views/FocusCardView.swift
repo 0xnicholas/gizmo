@@ -59,13 +59,9 @@ struct FocusCardView: View {
                 .frame(width: 8, height: 8)
             Text(provider.displayName)
                 .font(.system(size: 13.5, weight: .semibold))
+            // P2-9(FC-6):胶囊只显 level;内部域码进 tooltip(展示层映射已知值)。
             if let plan = runtime.snapshot?.meta.plan {
-                Text(planText(plan))
-                    .font(.system(size: 10))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1.5)
-                    .background(Capsule().fill(Color.primary.opacity(0.06)))
-                    .foregroundStyle(.secondary)
+                planCapsule(plan)
             }
             Spacer()
             if runtime.hasSnapshot, runtime.credential == .configured {
@@ -75,7 +71,6 @@ struct FocusCardView: View {
             }
         }
     }
-
     private var statusForHeader: ProviderStatus? {
         guard runtime.hasSnapshot, runtime.credential == .configured else { return nil }
         return runtime.status
@@ -86,18 +81,27 @@ struct FocusCardView: View {
         model.state.credentialReadFailures.contains(provider)
     }
 
-    private func planText(_ plan: Plan) -> String {
-        if let domain = plan.domain, domain != plan.level {
-            return "\(plan.level) · \(domain)"
+    @ViewBuilder
+    private func planCapsule(_ plan: Plan) -> some View {
+        let capsule = Text(plan.level)
+            .font(.system(size: 10))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(Capsule().fill(Color.primary.opacity(0.06)))
+            .foregroundStyle(.secondary)
+        if let domain = plan.domain {
+            capsule.help(Presentation.planDomainHelp(domain))
+        } else {
+            capsule
         }
-        return plan.level
     }
 
     // MARK: - 数据内容
 
     @ViewBuilder
     private func dataContent(_ snapshot: Snapshot) -> some View {
-        ForEach(Array(snapshot.windows.enumerated()), id: \.offset) { _, window in
+        // 主区:「额度窗口」——只放 plan 窗(频限窗移入下方次级区,P2-6)。
+        ForEach(Array(snapshot.planWindows.enumerated()), id: \.offset) { _, window in
             QuotaWindowRow(window: window, fromFailedSnapshot: runtime.loadFailed)
         }
 
@@ -107,9 +111,7 @@ struct FocusCardView: View {
             ForEach(Array(snapshot.balances.enumerated()), id: \.offset) { _, balance in
                 InfoRow(label: balanceLabel(balance), value: Money.format(balance.amount, currency: balance.currency))
             }
-            if let concurrency = snapshot.meta.concurrencyLimit {
-                InfoRow(label: "并发上限", value: "\(concurrency)")
-            }
+            // 并发上限移入次级区(P2-6):常量事实不与动态额度混排。
         }
 
         // 无直接来源的 provider 根本不出现该行;有来源但获取失败显示「— 获取失败」。
@@ -124,6 +126,40 @@ struct FocusCardView: View {
                 .help("该行依赖独立的用量时序接口,获取失败不影响其它额度数据")
         case nil:
             EmptyView()
+        }
+
+        // 次级区(P2-6,FC-3):频限单行 + 并发上限——更小字号、次要色、单行化,
+        // 与主区拉开层级;只在确有次级事实时渲染。
+        secondaryFactsZone(snapshot)
+    }
+
+    @ViewBuilder
+    private func secondaryFactsZone(_ snapshot: Snapshot) -> some View {
+        let rateLimits = snapshot.rateLimitWindows
+        let concurrency = snapshot.meta.concurrencyLimit
+        if !rateLimits.isEmpty || concurrency != nil {
+            VStack(alignment: .leading, spacing: 2.5) {
+                // 恢复时刻的过期降级需分钟级重估(与主区 resetLine 同语义);
+                // EveryMinute 仅 popover 挂载时运转,无全局定时器。
+                EveryMinute { now in
+                    ForEach(Array(rateLimits.enumerated()), id: \.offset) { _, window in
+                        let line = RateLimitFactLine(window: window, fromFailedSnapshot: runtime.loadFailed, now: now)
+                        if let help = line.help {
+                            Text(line.text)
+                                .help(help)
+                        } else {
+                            Text(line.text)
+                        }
+                    }
+                }
+                if let concurrency {
+                    Text("并发上限 \(concurrency)")
+                }
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
+            .overlay(alignment: .top) { Divider().opacity(0.4) }
         }
     }
 
