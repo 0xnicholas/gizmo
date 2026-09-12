@@ -135,7 +135,7 @@ struct PopoverView: View {
                         Circle()
                             .fill(Presentation.color(for: quickFigure.colorStatus, scheme: scheme))
                             .frame(width: 7, height: 7)
-                        Text(shortName(provider))
+                        Text(Presentation.shortName(provider))
                             .font(.system(size: 11.5, weight: weight))
                         Text(quickFigure.text)
                             .font(.system(size: 11.5, weight: weight))
@@ -155,14 +155,6 @@ struct PopoverView: View {
         }
         .padding(2)
         .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.04)))
-    }
-
-    private func shortName(_ provider: Provider) -> String {
-        switch provider {
-        case .glm: return "GLM"
-        case .kimi: return "Kimi"
-        case .deepseek: return "DeepSeek"
-        }
     }
 
     // MARK: - 凭据状态行(骨架C,P1-5:全绿收一行,有问题只展开问题家)
@@ -385,21 +377,14 @@ struct GlobalOverviewBar: View {
     /// 临界/偏低的落点单独一行:最紧的窗口未必就是拉低颜色的那家
     /// (如 DeepSeek 无窗口、按余额分界),避免把结论挂错行。
     private var alertLine: String? {
-        let criticals = providers(withStatus: .critical)
+        let criticals = Presentation.providers(withStatus: .critical, in: state)
         if !criticals.isEmpty {
             return "已达临界:" + criticals.map(\.displayName).joined(separator: "、")
         }
-        let lows = providers(withStatus: .low)
+        let lows = Presentation.providers(withStatus: .low, in: state)
         if !lows.isEmpty {
             return "偏低:" + lows.map(\.displayName).joined(separator: "、")
         }
         return nil
-    }
-
-    private func providers(withStatus status: ProviderStatus) -> [Provider] {
-        Provider.displayOrder.filter { provider in
-            let runtime = state.provider(provider)
-            return runtime.hasSnapshot && runtime.credential == .configured && runtime.status == status
-        }
     }
 }

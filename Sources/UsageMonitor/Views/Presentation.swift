@@ -33,6 +33,24 @@ enum Presentation {
         }
     }
 
+    /// 紧凑显示名(tab、a11y 等空间受限/VoiceOver 朗读场景):GLM / Kimi / DeepSeek。
+    static func shortName(_ provider: Provider) -> String {
+        switch provider {
+        case .glm: return "GLM"
+        case .kimi: return "Kimi"
+        case .deepseek: return "DeepSeek"
+        }
+    }
+
+    /// 「点名某状态家」的共享口径:持快照且凭据正常(失效家的旧档是凭据问题,
+    /// 归横幅)。总览条 alertLine 与图标 a11y 最差半句共用,防两处口径漂移。
+    static func providers(withStatus status: ProviderStatus, in state: EngineState) -> [Provider] {
+        Provider.displayOrder.filter { provider in
+            let runtime = state.provider(provider)
+            return runtime.hasSnapshot && runtime.credential == .configured && runtime.status == status
+        }
+    }
+
     static func symbol(for status: ProviderStatus?) -> String {
         switch status {
         case .critical: return "!"
@@ -295,5 +313,42 @@ struct GlobalPercentPresentation {
             if runtime.hasSnapshot { return runtime.status }
         }
         return nil
+    }
+}
+
+/// 菜单栏图标 a11y 一行说明(IC-2,P2-7,#45):「全局最紧剩余 65%,GLM 7 天窗;
+/// 最差状态:DeepSeek 临界」——VoiceOver 一行同时报数字口径(最紧窗)与全局最差
+/// 状态,补足口径乙后图标本体的口径收窄(颜色随数字、全局最差退居总览条/通知)。
+/// 最差半句与总览条 alertLine 同口径:只点名凭据正常的持快照家(失效家的旧档
+/// 是凭据问题,归横幅),全正常收成「全部正常」不点名凑数。
+struct IconAccessibilityPresentation {
+    let text: String
+
+    init(state: EngineState) {
+        guard state.overview.snapshotCount > 0 else {
+            text = "用量监视器,尚无数据"
+            return
+        }
+        var parts: [String] = []
+        if let tightest = state.overview.tightest {
+            parts.append("全局最紧剩余 \(tightest.displayPercent)%,\(Presentation.shortName(tightest.provider)) \(tightest.windowLabel)")
+        } else {
+            parts.append("暂无窗口数据")
+        }
+        parts.append(Self.worstClause(state))
+        text = parts.filter { !$0.isEmpty }.joined(separator: ";")
+    }
+
+    private static func worstClause(_ state: EngineState) -> String {
+        guard let worst = state.overview.worstStatus else { return "" }
+        if worst == .normal {
+            return "最差状态:全部正常"
+        }
+        let names = Presentation.providers(withStatus: worst, in: state)
+            .map(Presentation.shortName)
+        if names.isEmpty {
+            return "最差状态:\(Presentation.label(for: worst))"
+        }
+        return "最差状态:\(names.joined(separator: "、")) \(Presentation.label(for: worst))"
     }
 }

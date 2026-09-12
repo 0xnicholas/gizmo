@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import ApplicationServices
 import SwiftUI
 import UserNotifications
 import UsageMonitorCore
@@ -80,17 +81,18 @@ enum DevPreviewRenderer {
         )
         write(SettingsWindowView(model: keychainError), name: "settings-keychain-error.png", into: directory)
 
-        // 菜单栏图标全态:三态色数字 + 灰「—」 + 陈旧标记(IC-3:超 2× 轮询间隔降透明度)
-        write(MenuBarLabelView(model: seeded(PreviewData.normalState())), name: "menubar-icon-normal.png", into: directory, padding: 8, menubarContrast: .normal, menubarStaleness: true)
-        write(MenuBarLabelView(model: seeded(PreviewData.lowState())), name: "menubar-icon-low.png", into: directory, padding: 8, menubarContrast: .low)
-        write(MenuBarLabelView(model: seeded(PreviewData.criticalState())), name: "menubar-icon-critical.png", into: directory, padding: 8, menubarContrast: .critical)
-        write(MenuBarLabelView(model: seeded(PreviewData.staleState())), name: "menubar-icon-stale.png", into: directory, padding: 8, menubarStaleness: true)
-        write(MenuBarLabelView(model: seeded(PreviewData.freshState())), name: "menubar-icon-gray.png", into: directory, padding: 8)
+        // 菜单栏图标全态:三态色数字 + 灰「—」 + 陈旧标记(IC-3:超 2× 轮询间隔降透明度);
+        // 每态顺带打印 a11y 一行说明(IC-2 验收)
+        menubarIcon(PreviewData.normalState(), name: "menubar-icon-normal.png", into: directory, contrast: .normal, staleness: true)
+        menubarIcon(PreviewData.lowState(), name: "menubar-icon-low.png", into: directory, contrast: .low)
+        menubarIcon(PreviewData.criticalState(), name: "menubar-icon-critical.png", into: directory, contrast: .critical)
+        menubarIcon(PreviewData.staleState(), name: "menubar-icon-stale.png", into: directory, staleness: true)
+        menubarIcon(PreviewData.freshState(), name: "menubar-icon-gray.png", into: directory)
 
         // 口径乙(IC-4+IC-5):DeepSeek 临界 + GLM 窗 65% → 数字绿(旧口径此处红);
         // DeepSeek-only 临界 → 彩色「—」(旧口径永久灰)。menubarContrast 报告字形 rgb 供验收。
-        write(MenuBarLabelView(model: seeded(PreviewData.deepseekCriticalWithWindowsState())), name: "menubar-icon-deepseek-critical-window65.png", into: directory, padding: 8, menubarContrast: .normal)
-        write(MenuBarLabelView(model: seeded(PreviewData.deepseekOnlyCriticalState())), name: "menubar-icon-deepseek-only-critical.png", into: directory, padding: 8, menubarContrast: .critical)
+        menubarIcon(PreviewData.deepseekCriticalWithWindowsState(), name: "menubar-icon-deepseek-critical-window65.png", into: directory, contrast: .normal)
+        menubarIcon(PreviewData.deepseekOnlyCriticalState(), name: "menubar-icon-deepseek-only-critical.png", into: directory, contrast: .critical)
 
         print("已渲染到:\(directory.path)")
     }
@@ -102,6 +104,25 @@ enum DevPreviewRenderer {
         return model
     }
 
+    /// 菜单栏图标渲染:统一挂 a11y 一行说明报告(IC-2 验收),口径文案与渲染用同一 state。
+    private static func menubarIcon(
+        _ state: EngineState,
+        name: String,
+        into directory: URL,
+        contrast: ProviderStatus? = nil,
+        staleness: Bool = false
+    ) {
+        write(
+            MenuBarLabelView(model: seeded(state)),
+            name: name,
+            into: directory,
+            padding: 8,
+            menubarContrast: contrast,
+            menubarStaleness: staleness,
+            menubarAccessibility: IconAccessibilityPresentation(state: state).text
+        )
+    }
+
     private static func write<V: View>(
         _ view: V,
         name: String,
@@ -109,7 +130,8 @@ enum DevPreviewRenderer {
         appearance: NSAppearance.Name = .aqua,
         padding: CGFloat = 0,
         menubarContrast: ProviderStatus? = nil,
-        menubarStaleness: Bool = false
+        menubarStaleness: Bool = false,
+        menubarAccessibility: String? = nil
     ) {
         let content = view.padding(padding)
         let hosting = NSHostingView(rootView: content)
@@ -124,6 +146,7 @@ enum DevPreviewRenderer {
             defer: false
         )
         window.contentView = hosting
+        window.isReleasedWhenClosed = false
         window.layoutIfNeeded()
         hosting.layoutSubtreeIfNeeded()
 
@@ -160,6 +183,11 @@ enum DevPreviewRenderer {
                     menubarStalenessReport(appearance: "深色", rep: darkRep)
                 }
             }
+        }
+
+        // a11y 报告放最后:要把窗口上屏才能走 AX 运行时,读完即撤下。
+        if let a11y = menubarAccessibility {
+            menubarAccessibilityReport(expected: a11y, window: window)
         }
     }
 
@@ -264,25 +292,58 @@ enum DevPreviewRenderer {
         return sampled == 0 ? 1 : Double(transparent) / Double(sampled)
     }
 
-    /// 递归收集可访问性元素(角色 + 文本),作为「界面上有什么字」的机器可读快照。
-    private static func accessibilityTree(_ view: NSView, depth: Int = 0) -> [String] {
+    /// 菜单栏图标 a11y 一行说明报告(IC-2 验收):先打印口径文案,再把窗口短暂上屏、
+    /// 用 AX 运行时从可访问性树里读回真实挂上的 label——验证 .accessibilityLabel
+    /// 真正生效,而不只是字符串算得对。读完即撤下窗口,不污染下一个状态的查询;
+    /// 树里读不到时以口径文案为准、Accessibility Inspector 手检。
+    private static func menubarAccessibilityReport(expected: String, window: NSWindow) {
+        print("- 菜单栏 a11y 一行(IC-2):\(expected)")
+        window.orderFrontRegardless()
+        for _ in 0..<6 {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        let read = axTextStrings()
+        window.orderOut(nil)
+        window.close()
+        if read.contains(where: { $0.contains(expected) }) {
+            print("    树中读到:\(expected)")
+        } else if !read.isEmpty {
+            print("    树中文案:\(read.joined(separator: " | ")) ——未见口径文案,人工核对")
+        } else {
+            print("    (可访问性树未暴露;以口径文案为准,Accessibility Inspector 手检)")
+        }
+    }
+
+    /// 收集当前上屏窗口可访问性子树的全部文案(desc/value)。SwiftUI 的 a11y
+    /// 元素不经 NSView(NSHostingView 的 accessibilityChildren() 恒空),须走
+    /// AX 运行时桥;本进程自查免辅助功能授权。
+    private static func axTextStrings() -> [String] {
+        let app = AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let windows = windowsRef as? [AXUIElement]
+        else { return [] }
+        return windows.flatMap { axTextStrings(of: $0) }
+    }
+
+    private static func axTextStrings(of element: AXUIElement, depth: Int = 0) -> [String] {
         guard depth < 6 else { return [] }
-        var lines: [String] = []
-        if let children = view.accessibilityChildren() {
-            for child in children {
-                guard let element = child as? NSView else { continue }
-                let role = element.accessibilityRole()?.rawValue ?? "?"
-                let label = element.accessibilityLabel() ?? ""
-                let value = (element as? NSTextField)?.stringValue ?? ""
-                let text = [label, value].filter { !$0.isEmpty }.joined(separator: " | ")
-                if !text.isEmpty {
-                    lines.append(String(repeating: "  ", count: depth) + "\(role): \(text)")
-                } else {
-                    lines.append(contentsOf: accessibilityTree(element, depth: depth + 1))
-                }
+        var strings: [String] = []
+        for attribute in [kAXDescriptionAttribute, kAXValueAttribute] {
+            var value: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+               let text = value as? String, !text.isEmpty {
+                strings.append(text)
             }
         }
-        return lines
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            for child in children {
+                strings.append(contentsOf: axTextStrings(of: child, depth: depth + 1))
+            }
+        }
+        return strings
     }
 }
 #endif
