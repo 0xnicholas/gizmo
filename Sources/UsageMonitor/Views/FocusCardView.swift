@@ -207,8 +207,9 @@ struct FocusCardView: View {
                     .controlSize(.small)
             }
             Spacer()
-            Button("刷新") { model.refresh(provider) }
-                .controlSize(.small)
+            // 卡级「刷新」已移除(P2-8,I):与头部全量刷新同名同图不同义;
+            // 非失败态不再提供卡级刷新(头部全量覆盖),失败态的重试入口在
+            // 上方的失败条/占位里(单家语义,不与「刷新」并存)。
             Link(destination: provider.consoleURL) {
                 Text("控制台 ↗")
                     .font(.system(size: 11.5))
