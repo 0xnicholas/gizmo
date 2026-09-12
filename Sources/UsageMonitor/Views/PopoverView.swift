@@ -263,6 +263,12 @@ struct GlobalOverviewBar: View {
                 }
             }
             Spacer()
+            // 全局结论扶正(骨架A,P0-2):大号百分比与菜单栏图标同源同口径,免读整句副行。
+            let figure = GlobalPercentPresentation(state: state, scheme: scheme)
+            Text(figure.text)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(figure.color)
         }
         .padding(9)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
@@ -297,7 +303,7 @@ struct GlobalOverviewBar: View {
         guard let tightest = state.overview.tightest else {
             return "菜单栏图标显示「—」,直到有套餐窗口数据"
         }
-        var text = "剩余 \(Money.formatCount(tightest.remaining)) / \(Money.formatCount(tightest.limit)) \(tightest.unit)(\(tightest.displayPercent)%)"
+        var text = "剩余 \(Money.formatCount(tightest.remaining)) / \(Money.formatCount(tightest.limit)) \(tightest.unit)"
         if let reset = Presentation.resetText(tightest.resetAt) {
             text += " · \(reset)"
         }

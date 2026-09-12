@@ -65,9 +65,10 @@ enum Presentation {
     }()
 }
 
-/// 菜单栏图标口径:数字 = 全局最低 plan-window 剩余%(四舍五入整数,最低 1%),
+/// 全局结论数字的呈现口径:数字 = 全局最低 plan-window 剩余%(四舍五入整数,最低 1%),
 /// 颜色 = 全局最差 status(含 DeepSeek 余额档位);无任何窗口数据时灰「—」。
-struct MenuBarPresentation {
+/// 菜单栏图标与 popover 总览条共用同一映射,两处数字与颜色不打架(用户故事 18)。
+struct GlobalPercentPresentation {
     let text: String
     let color: Color
 
