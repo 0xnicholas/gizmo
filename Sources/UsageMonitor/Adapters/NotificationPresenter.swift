@@ -43,7 +43,7 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
 
     func post(usageCritical alert: UsageAlert) {
         post(
-            identifier: "usage-critical-\(alert.provider.rawValue)",
+            identifier: alert.notificationIdentifier,
             title: "用量临界",
             body: alert.text,
             route: .usage(alert.provider)

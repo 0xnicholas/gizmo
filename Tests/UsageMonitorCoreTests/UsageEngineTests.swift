@@ -349,10 +349,41 @@ struct UsageEngineTests {
             basis: .window(label: "5 小时窗", remaining: 590, limit: 12_000, unit: "积分", percent: 5)
         )
         #expect(first == [.snapshotUpdated(.glm), .usageCritical(expected)])
-        #expect(expected.text == "GLM Coding Plan 剩余 590 积分(5%),已达临界")
+        #expect(expected.text == "GLM Coding Plan 5 小时窗 剩余 590 积分(5%),已达临界")
+        #expect(expected.notificationIdentifier == "usage-critical-glm-5 小时窗")
 
         let second = await harness.engine.refreshAll()
         #expect(!second.contains { $0.notificationKind == "usage" })
+    }
+
+    @Test("窗口临界:窗口名 + 千位分组;双窗 identifier 不互顶;无名回退")
+    func criticalWindowCopyAndIdentifiers() async {
+        // 7 天窗 3,000/60,000 = 5% 为最紧(5 小时窗 94% 健康):文案带窗口名、数字千位分组
+        let harness = EngineHarness(payloads: [.glm: Payloads.glm(fiveHourRemaining: 11_358, weeklyRemaining: 3_000)])
+        let events = await harness.engine.refreshAll()
+        let weekly = UsageAlert(
+            provider: .glm,
+            basis: .window(label: "7 天窗", remaining: 3_000, limit: 60_000, unit: "积分", percent: 5)
+        )
+        #expect(events.contains(.usageCritical(weekly)))
+        #expect(weekly.text == "GLM Coding Plan 7 天窗 剩余 3,000 积分(5%),已达临界")
+
+        // C5:5 小时窗与 7 天窗先后临界,identifier 不同 → 通知中心互不顶掉
+        let fiveHour = UsageAlert(
+            provider: .glm,
+            basis: .window(label: "5 小时窗", remaining: 590, limit: 12_000, unit: "积分", percent: 5)
+        )
+        #expect(weekly.notificationIdentifier == "usage-critical-glm-7 天窗")
+        #expect(fiveHour.notificationIdentifier == "usage-critical-glm-5 小时窗")
+        #expect(weekly.notificationIdentifier != fiveHour.notificationIdentifier)
+
+        // 窗口名缺失:文案回退现形态(仅千位分组)、identifier 回退 provider 粒度
+        let unlabeled = UsageAlert(
+            provider: .glm,
+            basis: .window(label: "", remaining: 1_200, limit: 12_000, unit: "积分", percent: 10)
+        )
+        #expect(unlabeled.text == "GLM Coding Plan 剩余 1,200 积分(10%),已达临界")
+        #expect(unlabeled.notificationIdentifier == "usage-critical-glm")
     }
 
     @Test("恢复后再跨入才再发;24h 冷却期内静默")
@@ -391,15 +422,32 @@ struct UsageEngineTests {
         )
         #expect(events.contains(.usageCritical(alert)))
         #expect(alert.text == "DeepSeek 余额 ¥8.20,已达临界")
+        #expect(alert.notificationIdentifier == "usage-critical-deepseek")
     }
 
-    @Test("is_available=false → 不可用文案")
+    @Test("is_available=false → 不可用文案不含「已达临界」")
     func unavailableAlert() async {
         let harness = EngineHarness(payloads: [.deepseek: Payloads.deepseek(total: "999.00", available: false)])
         let events = await harness.engine.refreshAll()
         let alert = UsageAlert(provider: .deepseek, basis: .accountUnavailable)
         #expect(events.contains(.usageCritical(alert)))
-        #expect(alert.text == "DeepSeek 余额不可用,已达临界")
+        #expect(alert.text == "DeepSeek 账户余额不可用,请到平台查看")
+        #expect(alert.text.contains("已达临界") == false)
+        #expect(alert.notificationIdentifier == "usage-critical-deepseek")
+    }
+
+    @Test("Kimi 日窗口临界:同一带窗口名与窗口级 identifier")
+    func kimiWindowAlert() async {
+        // 日窗口 5/100 = 5%:另一家带窗口 provider 的同规则验证(文案 + identifier)
+        let harness = EngineHarness(payloads: [.kimi: Payloads.kimi(dayRemaining: 5)])
+        let events = await harness.engine.refreshAll()
+        let alert = UsageAlert(
+            provider: .kimi,
+            basis: .window(label: "日窗口", remaining: 5, limit: 100, unit: "会话", percent: 5)
+        )
+        #expect(events.contains(.usageCritical(alert)))
+        #expect(alert.text == "Kimi for Coding 日窗口 剩余 5 会话(5%),已达临界")
+        #expect(alert.notificationIdentifier == "usage-critical-kimi-日窗口")
     }
 
     @Test("频限窗吃紧不触发临界(只展不判)")

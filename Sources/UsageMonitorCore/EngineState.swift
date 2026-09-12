@@ -118,16 +118,27 @@ public struct UsageAlert: Equatable, Sendable {
         self.basis = basis
     }
 
-    /// 通知/横幅文案:「<provider> 剩余 N <单位>(P%),已达临界」。
+    /// 通知/横幅文案。窗口依据带窗口名(5 小时窗可等滚动重置、7 天窗是整周见底,
+    /// 应对完全不同);窗口名缺失时回退不带窗口名的形态。数字经 `Money.formatCount`
+    /// 千位分组,与 popover 同数同形。
     public var text: String {
         switch basis {
-        case .window(_, let remaining, _, let unit, let percent):
-            return "\(provider.displayName) 剩余 \(remaining) \(unit)(\(percent)%),已达临界"
+        case .window(let label, let remaining, _, let unit, let percent):
+            let who = label.isEmpty ? provider.displayName : "\(provider.displayName) \(label)"
+            return "\(who) 剩余 \(Money.formatCount(remaining)) \(unit)(\(percent)%),已达临界"
         case .balance(let amount, let currency):
             return "\(provider.displayName) 余额 \(Money.format(amount, currency: currency)),已达临界"
         case .accountUnavailable:
-            return "\(provider.displayName) 余额不可用,已达临界"
+            return "\(provider.displayName) 账户余额不可用,请到平台查看"
         }
+    }
+
+    /// 通知去重 identifier:窗口依据细化到窗口级——GLM 双窗先后临界在通知中心互不顶掉;
+    /// 窗口名缺失或非窗口依据时回退 provider 粒度(与凭据失效通知的形态一致)。
+    public var notificationIdentifier: String {
+        let base = "usage-critical-\(provider.rawValue)"
+        guard case .window(let label, _, _, _, _) = basis, !label.isEmpty else { return base }
+        return base + "-" + label
     }
 }
 
