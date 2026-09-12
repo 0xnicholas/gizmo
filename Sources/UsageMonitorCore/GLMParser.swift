@@ -22,14 +22,15 @@ public struct GLMParser: ProviderParser {
 
         var windows: [QuotaWindow] = []
         for item in JSONReader.array(data["limits"]) ?? [] {
-            guard let entry = JSONReader.object(item), let type = JSONReader.string(entry["type"]),
-                  Self.modeledTypes.contains(type)
+            guard let entry = JSONReader.object(item),
+                  let rawType = JSONReader.string(entry["type"]),
+                  let type = QuotaType(rawValue: rawType)
             else {
                 continue
             }
             if let window = QuotaWindow.make(
                 kind: .planWindow,
-                label: Self.label(type: type, unit: JSONReader.int(entry["unit"]), number: JSONReader.int(entry["number"])),
+                label: type.label(unit: JSONReader.int(entry["unit"]), number: JSONReader.int(entry["number"])),
                 unit: "积分",
                 limit: entry["usage"],
                 used: entry["currentValue"],
@@ -56,29 +57,34 @@ public struct GLMParser: ProviderParser {
         )
     }
 
-    /// 已知额度类型。`TIME_LIMIT` 为官方 intl 插件映射的 MCP 月度额度,同属套餐窗口。
-    static let modeledTypes: Set<String> = ["CREDIT_LIMIT", "TOKENS_LIMIT", "TIME_LIMIT"]
+    /// 已知额度类型。schema 在演进,未知类型不建模(原文仍留在 raw)。
+    enum QuotaType: String {
+        case credit = "CREDIT_LIMIT"
+        case tokens = "TOKENS_LIMIT"
+        case time = "TIME_LIMIT"
 
-    /// 窗口展示名。
-    ///
-    /// - `TOKENS_LIMIT` / `TIME_LIMIT` 的窗口语义由 type 决定(官方 intl 插件映射:
-    ///   Token usage(5 Hour) / MCP usage(1 Month)),不套用 unit/number 编码——
-    ///   该编码只在实测的 `CREDIT_LIMIT` 上验证过,套用会把月度 MCP 额度标成 7 天窗。
-    /// - `CREDIT_LIMIT`(实测):unit=3&number=5 → 5 小时窗;unit=6&number=1 → 7 天窗(订阅锚点)。
-    /// - 其余组合保守降级为「窗口」,不猜单位语义。
-    static func label(type: String, unit: Int?, number: Int?) -> String {
-        switch type {
-        case "TIME_LIMIT": return "MCP · 月度窗"
-        case "TOKENS_LIMIT": return "Token · 5 小时窗"
-        default: break
+        /// 窗口展示名。
+        ///
+        /// `TOKENS_LIMIT` / `TIME_LIMIT` 的窗口语义由 type 决定(官方 intl 插件映射:
+        /// Token usage(5 Hour) / MCP usage(1 Month)),不套用 unit/number 编码——
+        /// 该编码只在实测的 `CREDIT_LIMIT` 上验证过,套用会把月度 MCP 额度标成 7 天窗。
+        func label(unit: Int?, number: Int?) -> String {
+            switch self {
+            case .time: return "MCP · 月度窗"
+            case .tokens: return "Token · 5 小时窗"
+            case .credit: return creditLabel(unit: unit, number: number)
+            }
         }
-        var base = "窗口"
-        switch (unit, number) {
-        case (3, let number?): base = "\(number) 小时窗"
-        case (6, let number?): base = number == 1 ? "7 天窗" : "\(number) 周窗"
-        default: break
+
+        /// CREDIT_LIMIT(实测):unit=3&number=5 → 5 小时窗;unit=6&number=1 → 7 天窗(订阅锚点)。
+        /// 其余组合保守降级为「窗口」,不猜单位语义。
+        private func creditLabel(unit: Int?, number: Int?) -> String {
+            switch (unit, number) {
+            case (3, let number?): return "\(number) 小时窗"
+            case (6, let number?): return number == 1 ? "7 天窗" : "\(number) 周窗"
+            default: return "窗口"
+            }
         }
-        return base
     }
 
     /// 近 7 天用量:请求窗口由适配器给定(自然滚动 7 天),此处只做日桶求和。

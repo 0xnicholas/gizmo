@@ -29,11 +29,15 @@ struct ParserDataContractTests {
         }
     }
 
-    @Test("raw 恰好是响应体本身:没有夹带任何请求侧数据")
+    @Test("raw 恰好是响应体本身:分片只去首尾空白,不重排、不夹带请求侧数据")
     func rawIsExactlyTheResponseBody() throws {
         for (name, parser, body) in cases {
             let snapshot = try parser.parse(payload: .ok(body), fetchedAt: Fixture.epoch)
             #expect(snapshot.raw == body, "\(name):单分片 raw 不等于响应体原文")
+
+            // 首尾空白会被裁掉(分片原文的规整口径),字段与内部排版不动。
+            let padded = "\n  \(body)  \n"
+            #expect(try parser.parse(payload: .ok(padded), fetchedAt: Fixture.epoch).raw == body, "\(name):首尾空白未按约定裁掉")
         }
     }
 
@@ -41,6 +45,7 @@ struct ParserDataContractTests {
     func responsesCarryNoRequestHeaders() {
         // 红线:「raw 落快照前不得拼入 Authorization」在类型层面成立——
         // FetchResponse 只有 statusCode/body,解析器拿不到、也就构造不出请求。
+        // 这里是刻意的契约断言:新增字段需显式确认不会携带请求侧数据。
         let response = FetchResponse(statusCode: 200, body: ParserFixtures.data("{}"))
         let fields = Mirror(reflecting: response).children.compactMap(\.label).sorted()
         #expect(fields == ["body", "statusCode"])

@@ -15,7 +15,7 @@ _Avoid_: 计划、档位(「档位」仅作套餐内 level 字段的展示名)
 _Avoid_: 状态对象、模型
 
 **quotaWindow 额度窗口**:
-有时间边界、会周期重置的额度容器:limit / used / remaining / resetAt / kind。kind 区分「套餐窗口」(GLM 5 小时窗与 7 天窗、Kimi 日窗)与「频限窗口」(Kimi 300 分钟滚动窗)。窗口是剩余额度与健康状态的最小计算单位。
+有时间边界、会周期重置的额度容器:limit / used / remaining / resetAt / kind。kind 区分「套餐窗口」(GLM 5 小时窗、7 天窗与 MCP 月度窗、Kimi 日窗)与「频限窗口」(Kimi 300 分钟滚动窗)。窗口是剩余额度与健康状态的最小计算单位。
 _Avoid_: 配额、限额
 
 **rateLimit 频限**:
