@@ -5,7 +5,6 @@ import UsageMonitorCore
 struct SettingsWindowView: View {
     @ObservedObject var model: AppModel
 
-    @State private var draft: [Provider: String] = [:]
     @State private var revealed: Set<Provider> = []
     @State private var confirmingClear: Provider?
 
@@ -99,7 +98,6 @@ struct SettingsWindowView: View {
             HStack {
                 Spacer()
                 Button("完成") { model.requestCloseSettings?() }
-                    .keyboardShortcut(.cancelAction)
             }
         }
         .padding(16)
@@ -190,7 +188,6 @@ struct SettingsWindowView: View {
             HStack {
                 Spacer()
                 Button("完成") { model.requestCloseSettings?() }
-                    .keyboardShortcut(.cancelAction)
             }
         }
         .padding(16)
@@ -230,7 +227,6 @@ struct SettingsWindowView: View {
                     .foregroundStyle(.secondary)
                 Button("清除") {
                     model.clearCredential(for: provider)
-                    draft[provider] = ""
                     confirmingClear = nil
                 }
                 .tint(.red)
@@ -270,22 +266,16 @@ struct SettingsWindowView: View {
 
     private func binding(_ provider: Provider) -> Binding<String> {
         Binding(
-            get: { draft[provider] ?? "" },
+            get: { model.credentialDrafts[provider] ?? "" },
             set: { newValue in
-                draft[provider] = newValue
-                if !newValue.isEmpty {
-                    model.dismissCredentialNotice(for: provider)
-                }
+                model.updateCredentialDraft(newValue, for: provider)
             }
         )
     }
 
     private func save(_ provider: Provider) {
-        let value = draft[provider] ?? ""
-        // 只有写入成功才清空输入框,失败时保留用户粘贴的内容。
-        if model.saveCredential(value, for: provider) {
-            draft[provider] = ""
-        }
+        // 草稿消费(清空输入框)由 AppModel 在写入成功后统一处理,失败时保留用户粘贴的内容。
+        _ = model.saveCredential(model.credentialDrafts[provider] ?? "", for: provider)
     }
 
     private func placeholder(_ provider: Provider) -> String {

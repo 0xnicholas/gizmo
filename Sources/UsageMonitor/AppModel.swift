@@ -44,6 +44,9 @@ final class AppModel: ObservableObject {
     @Published var settingsSelection: SettingsSelection = .general
     @Published var settingsArrivalBanner = false
     @Published private(set) var credentialNotices: [Provider: CredentialNotice] = [:]
+    /// 凭据窗格的粘贴草稿:只存在于进程内存;保存/清除成功即消费,窗口真关闭时清空。
+    /// 放在 AppModel(而非视图 @State)是为了让窗口关闭拦截点(NSWindowDelegate)能看见「有未保存内容」。
+    @Published private(set) var credentialDrafts: [Provider: String] = [:]
     @Published var notice: Notice?
     @Published private(set) var loginItemEnabled: Bool
     /// 设置窗口「通用」展示的通知授权状态(nil = 尚未查到)。
@@ -225,6 +228,7 @@ final class AppModel: ObservableObject {
         case .saved:
             credentialNotices[provider] = .saved
             notice = nil
+            credentialDrafts[provider] = nil
             refresh(provider)
             return true
         case .rejectedEmpty:
@@ -242,7 +246,29 @@ final class AppModel: ObservableObject {
             return
         }
         credentialNotices[provider] = nil
+        credentialDrafts[provider] = nil
         Task { await apply(await engine.credentialCleared(provider)) }
+    }
+
+    // MARK: - 凭据草稿
+
+    /// 是否存在未保存草稿(策略见 CredentialDraftEditing):窗口关闭前是否需要确认。
+    var hasUnsavedCredentialDraft: Bool {
+        CredentialDraftEditing.hasUnsavedDraft(credentialDrafts)
+    }
+
+    /// 窗格输入框绑定入口;非空输入时顺手清掉旧反馈(错误横幅/成功提示不驻留)。
+    func updateCredentialDraft(_ value: String, for provider: Provider) {
+        credentialDrafts[provider] = value
+        if !value.isEmpty {
+            dismissCredentialNotice(for: provider)
+        }
+    }
+
+    /// 窗口真关闭时调用:草稿即弃,凭据文本不驻留内存。
+    func discardCredentialDrafts() {
+        guard !credentialDrafts.isEmpty else { return }
+        credentialDrafts = [:]
     }
 
     func dismissCredentialNotice(for provider: Provider) {

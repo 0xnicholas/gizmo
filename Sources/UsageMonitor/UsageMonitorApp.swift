@@ -114,8 +114,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// 红绿灯标题「用量监视器设置」的独立窗口;关闭即隐藏,再次打开复用同一实例。
+/// 所有关闭路径(红点 / Cmd+W /「完成」/ performClose)汇聚在 windowShouldClose:
+/// 有未保存凭据草稿时先确认,避免静默丢弃已粘贴内容。
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private weak var modelRef: AppModel?
+
     init(model: AppModel) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 340),
@@ -128,10 +132,42 @@ final class SettingsWindowController: NSWindowController {
         window.contentViewController = NSHostingController(rootView: SettingsWindowView(model: model))
         window.center()
         super.init(window: window)
+        modelRef = model
+        window.delegate = self
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) 未实现")
+    }
+
+    // MARK: - 关闭拦截
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard let model = modelRef, model.hasUnsavedCredentialDraft else { return true }
+        confirmDiscardDrafts(in: sender) { discard in
+            guard discard else { return }
+            model.discardCredentialDrafts()
+            sender.performClose(nil)
+        }
+        return false
+    }
+
+    /// 窗口真关闭(含确认后关闭):草稿即弃,凭据文本不驻留内存。
+    func windowWillClose(_ notification: Notification) {
+        modelRef?.discardCredentialDrafts()
+    }
+
+    /// 未保存草稿确认:默认(回车/继续编辑)保留内容;丢弃是显式 destructive 动作。
+    private func confirmDiscardDrafts(in window: NSWindow, completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "有未保存的凭据内容"
+        alert.informativeText = "窗口里还有已粘贴但未保存的凭据,关闭将丢弃;已保存到钥匙串的内容不受影响。"
+        alert.addButton(withTitle: "继续编辑")
+        alert.addButton(withTitle: "丢弃并关闭")
+        alert.beginSheetModal(for: window) { response in
+            completion(response == .alertSecondButtonReturn)
+        }
     }
 }
