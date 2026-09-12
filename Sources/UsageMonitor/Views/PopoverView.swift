@@ -162,33 +162,58 @@ struct PopoverView: View {
         }
     }
 
-    // MARK: - 凭据状态行(不深入设置也知道配置全不全)
+    // MARK: - 凭据状态行(骨架C,P1-5:全绿收一行,有问题只展开问题家)
 
     private var credentialStatusRow: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("凭据")
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(.secondary)
-            ForEach(Provider.displayOrder, id: \.self) { provider in
-                let runtime = state.provider(provider)
-                let readFailure = state.credentialReadFailures.contains(provider)
+        let rowPresentation = CredentialRowPresentation(state: state)
+        return VStack(alignment: .leading, spacing: 5) {
+            if rowPresentation.isCollapsed {
+                // 全绿:一行「三家凭据正常 · 管理」,把纵向空间还给总览与焦点卡;
+                // 行文已自证是凭据段,不再叠小标题。
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(readFailure ? Color.secondary.opacity(0.5) : credentialColor(runtime.credential))
+                        .fill(credentialColor(.configured))
                         .frame(width: 6, height: 6)
-                    Text(provider.displayName)
+                    Text("三家凭据正常")
                         .font(.system(size: 11))
-                    Text(readFailure ? "未知(钥匙串读取失败)" : credentialText(runtime.credential))
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
                     Spacer()
-                    Button(isConfigured(provider) || readFailure ? "管理" : "去设置") {
-                        model.openSettings(selecting: .provider(provider))
+                    Button("管理") {
+                        model.openSettings(selecting: .general)
                     }
                     .buttonStyle(.borderless)
                     .font(.system(size: 10.5))
+                    .help("打开设置;凭据在左侧列表逐家管理")
+                }
+            } else {
+                Text("凭据")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(rowPresentation.problemProviders, id: \.self) { provider in
+                    problemCredentialRow(provider)
                 }
             }
+        }
+    }
+
+    /// 问题家逐行:名称 + 状态 + 入口;正常家不占行(横幅管汇总,行管逐家入口)。
+    private func problemCredentialRow(_ provider: Provider) -> some View {
+        let runtime = state.provider(provider)
+        let readFailure = state.credentialReadFailures.contains(provider)
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(readFailure ? Color.secondary.opacity(0.5) : credentialColor(runtime.credential))
+                .frame(width: 6, height: 6)
+            Text(provider.displayName)
+                .font(.system(size: 11))
+            Text(readFailure ? "未知(钥匙串读取失败)" : credentialText(runtime.credential))
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button(isConfigured(provider) || readFailure ? "管理" : "去设置") {
+                model.openSettings(selecting: .provider(provider))
+            }
+            .buttonStyle(.borderless)
+            .font(.system(size: 10.5))
         }
     }
 

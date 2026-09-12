@@ -90,6 +90,26 @@ enum Presentation {
     }()
 }
 
+/// 凭据状态行的收拢口径(骨架C,P1-5,#38):全部已配置且无读取失败时收成一行
+/// 「三家凭据正常 · 管理」,把纵向空间还给总览与焦点卡;有任何问题(失效/未配置/
+/// 读取失败)时只展开问题家。横幅管汇总、行管逐家入口的分工不由此处改变。
+/// 加载失败但凭据已配置不算凭据问题(那归焦点卡与总览条口径)。
+struct CredentialRowPresentation {
+    /// 需要逐家展开的家,按展示序;凭据失效/未配置,或钥匙串读取失败(状态未知,
+    /// 优先于凭据字段判定——读不到不等于正常)。
+    let problemProviders: [Provider]
+
+    /// 全绿收拢:无任何问题家。
+    var isCollapsed: Bool { problemProviders.isEmpty }
+
+    init(state: EngineState) {
+        problemProviders = Provider.displayOrder.filter { provider in
+            let runtime = state.provider(provider)
+            return runtime.credential != .configured || state.credentialReadFailures.contains(provider)
+        }
+    }
+}
+
 /// 每分钟刷新的时间性文本容器(骨架F+FC-1,#37):内部 TimelineView 仅挂载
 /// (即 popover 可见)时运转,无全局定时器;重置倒计时/相对更新等时间性文案共用。
 struct EveryMinute<Content: View>: View {
