@@ -83,6 +83,12 @@ public struct EngineState: Equatable, Sendable {
         providers.values.contains { $0.credential != .missing }
     }
 
+    /// 全新安装:从未配置过任何凭据且无任何快照。钥匙串读取异常不算
+    /// (状态未知时不误判,同首启引导口径)。总览条标题、凭据横幅两行形态共用。
+    public var isFreshInstall: Bool {
+        overview.snapshotCount == 0 && !hasAnyCredential && credentialReadFailures.isEmpty
+    }
+
     /// 凭据失效或未配置的家数(顶部汇总横幅用);读取异常的家不计入,避免误报。
     public var pendingCredentialCount: Int {
         providers.values

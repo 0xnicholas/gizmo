@@ -69,9 +69,13 @@ struct PopoverView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bannerText)
                         .font(.system(size: 12, weight: .semibold))
-                    Text("凭据状态:已配置 / 未配置 / 已失效")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
+                    // 图例副文案(P2-10,D):单人 app 看一次就懂,常驻态不再重复;
+                    // 全新安装保留两行以自明。
+                    if state.isFreshInstall {
+                        Text("凭据状态:已配置 / 未配置 / 已失效")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 Button(bannerActionTitle) {
@@ -337,16 +341,9 @@ struct GlobalOverviewBar: View {
         Presentation.symbol(for: state.overview.worstStatus)
     }
 
-    /// 全新安装:从未配置过任何凭据且无任何快照;读取异常不算(状态未知时不误判,同首启引导口径)。
-    private var isFreshInstall: Bool {
-        state.overview.snapshotCount == 0
-            && !state.hasAnyCredential
-            && state.credentialReadFailures.isEmpty
-    }
-
     private var title: String {
         // 从未配置过任何凭据:不会有任何获取,不留「正在获取」的错觉。
-        if isFreshInstall {
+        if state.isFreshInstall {
             return "尚未配置凭据"
         }
         guard let tightest = state.overview.tightest else {
@@ -356,7 +353,7 @@ struct GlobalOverviewBar: View {
     }
 
     private func subtitle(now: Date) -> String {
-        if isFreshInstall {
+        if state.isFreshInstall {
             return "菜单栏图标显示「—」;粘贴凭据后自动开始刷新"
         }
         guard let tightest = state.overview.tightest else {
