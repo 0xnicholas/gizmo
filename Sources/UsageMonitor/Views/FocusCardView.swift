@@ -204,6 +204,14 @@ struct QuotaWindowRow: View {
                 Text("/ \(Money.formatCount(window.limit)) \(window.unit)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                // FC-2:行尾 muted 剩余百分比,与图标/总览同源同口径
+                // (Percent.display),互证「全局最紧」的数字从哪条窗来。
+                if let fraction = window.remainingFraction {
+                    Text("(\(Percent.display(fraction))%)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             ProgressView(value: progress)
                 .progressViewStyle(.linear)
@@ -236,15 +244,17 @@ struct QuotaWindowRow: View {
         return min(1, max(0, Double(window.used) / Double(window.limit)))
     }
 
-    /// 频限窗不参与 status 判定,进度条只用中性色。
+    /// 进度条色(FC-7,克制版):规则见 `WindowBarTint`;中性档用克制的灰,
+    /// 不再与状态点争「好色」的发言权。
     private var tint: Color {
-        guard window.kind == .planWindow, let fraction = window.remainingFraction else { return .accentColor }
-        switch fraction {
-        case ..<0.10: return .red
-        case ..<0.30: return .yellow
-        default: return .accentColor
+        switch WindowBarTint.of(kind: window.kind, remainingFraction: window.remainingFraction) {
+        case .alertRed: return .red
+        case .alertYellow: return .yellow
+        case .neutral: return Self.neutralFill
         }
     }
+
+    private static let neutralFill = Color.secondary.opacity(0.6)
 }
 
 struct InfoRow: View {

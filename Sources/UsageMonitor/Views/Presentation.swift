@@ -135,6 +135,24 @@ struct RefreshFooterPresentation {
     }
 }
 
+/// 窗口行进度条的色档(FC-7,克制版,#40):中性灰为底,仅告警变色——plan 窗色档
+/// 直接消费 StatusEvaluator 的临界/偏低判定(同一规则,「为什么这条黄了」不再
+/// 心算);频限窗不参与 status 判定,恒中性。消灭同卡「蓝条 vs 绿点」两种好色。
+enum WindowBarTint {
+    case alertRed
+    case alertYellow
+    case neutral
+
+    static func of(kind: QuotaWindow.Kind, remainingFraction: Double?) -> WindowBarTint {
+        guard kind == .planWindow, let fraction = remainingFraction else { return .neutral }
+        switch StatusEvaluator().status(forRemainingFraction: fraction) {
+        case .critical: return .alertRed
+        case .low: return .alertYellow
+        case .normal: return .neutral
+        }
+    }
+}
+
 /// 每分钟刷新的时间性文本容器(骨架F+FC-1,#37):内部 TimelineView 仅挂载
 /// (即 popover 可见)时运转,无全局定时器;重置倒计时/相对更新等时间性文案共用。
 struct EveryMinute<Content: View>: View {
