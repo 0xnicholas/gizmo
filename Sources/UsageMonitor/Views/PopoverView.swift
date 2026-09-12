@@ -4,6 +4,7 @@ import UsageMonitorCore
 /// popover = 总览 + 焦点:顶部「全局最紧」总览条 + 三家标签页 + 焦点卡片。
 struct PopoverView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.colorScheme) private var scheme
 
     private var state: EngineState { model.state }
 
@@ -128,7 +129,7 @@ struct PopoverView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(Presentation.color(for: tabStatus(provider)))
+                            .fill(Presentation.color(for: tabStatus(provider), scheme: scheme))
                             .frame(width: 7, height: 7)
                         Text(shortName(provider))
                             .font(.system(size: 11.5, weight: model.focusProvider == provider ? .semibold : .regular))
@@ -237,12 +238,13 @@ struct PopoverView: View {
 /// 顶部「全局最紧」总览条:与菜单栏图标同口径(全部 plan-window 的最低剩余)。
 struct GlobalOverviewBar: View {
     let state: EngineState
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(alignment: .center, spacing: 9) {
             ZStack {
                 Circle()
-                    .fill(Presentation.color(for: state.overview.worstStatus))
+                    .fill(Presentation.color(for: state.overview.worstStatus, scheme: scheme))
                     .frame(width: 22, height: 22)
                 Text(symbolText)
                     .font(.system(size: 11, weight: .bold))
@@ -257,7 +259,7 @@ struct GlobalOverviewBar: View {
                 if let alertLine {
                     Text(alertLine)
                         .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(Presentation.color(for: state.overview.worstStatus))
+                        .foregroundStyle(Presentation.color(for: state.overview.worstStatus, scheme: scheme))
                 }
             }
             Spacer()

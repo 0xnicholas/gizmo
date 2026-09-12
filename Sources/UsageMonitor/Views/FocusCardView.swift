@@ -6,6 +6,7 @@ struct FocusCardView: View {
     let provider: Provider
     let runtime: ProviderRuntimeState
     @ObservedObject var model: AppModel
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -54,7 +55,7 @@ struct FocusCardView: View {
     private var header: some View {
         HStack(spacing: 7) {
             Circle()
-                .fill(Presentation.color(for: statusForHeader))
+                .fill(Presentation.color(for: statusForHeader, scheme: scheme))
                 .frame(width: 8, height: 8)
             Text(provider.displayName)
                 .font(.system(size: 13.5, weight: .semibold))

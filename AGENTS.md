@@ -26,7 +26,7 @@ $SWIFT test    # 跑 UsageMonitorCore 与 UsageMonitorApp 两组测试
 - `~/linker-shim/ld`:CLT 14.2 的 ld 不认识 `-no_warn_duplicate_libraries`,shim 负责剥掉该参数再转发。
 - 测试框架用 Swift Testing(`import Testing`),不要 `import XCTest`——无 Xcode 就没有该模块。
 - 别装 6.3+ 工具链:其宿主工具要求 macOS 14,本机是 macOS 13。swiftly 在本机(x86_64 macOS 13)会崩,不要用。
-- `UsageMonitorAppTests` 只放 App 壳的最小冒烟:Keychain 适配器对真实 Security 框架(独立 service,不碰生产凭据)。策略逻辑(含凭据写入的 trim/空值/失败文案)仍在 `UsageMonitorCore` 内、由 `UsageMonitorCoreTests` 覆盖。
+- `UsageMonitorAppTests` 只放 App 壳的最小冒烟:Keychain 适配器对真实 Security 框架(独立 service,不碰生产凭据)。策略逻辑(含凭据写入的 trim/空值/失败文案)仍在 `UsageMonitorCore` 内、由 `UsageMonitorCoreTests` 覆盖。呈现层常量/纯逻辑(只在 App target 存在、下放 Core 反而污染分层的,如三态色调色板的 WCAG 锚点与亮度阶梯)也在此组单测。
 
 ## UI 形态检查(无 Xcode)
 

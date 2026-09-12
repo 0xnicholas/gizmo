@@ -71,9 +71,9 @@ enum DevPreviewRenderer {
         write(SettingsWindowView(model: keychainError), name: "settings-keychain-error.png", into: directory)
 
         // 菜单栏图标全态:三态色数字 + 灰「—」(验收:数字/色/灰迁移、无角标)
-        write(MenuBarLabelView(model: seeded(PreviewData.normalState())), name: "menubar-icon-normal.png", into: directory, padding: 8)
-        write(MenuBarLabelView(model: seeded(PreviewData.lowState())), name: "menubar-icon-low.png", into: directory, padding: 8)
-        write(MenuBarLabelView(model: seeded(PreviewData.criticalState())), name: "menubar-icon-critical.png", into: directory, padding: 8)
+        write(MenuBarLabelView(model: seeded(PreviewData.normalState())), name: "menubar-icon-normal.png", into: directory, padding: 8, menubarContrast: .normal)
+        write(MenuBarLabelView(model: seeded(PreviewData.lowState())), name: "menubar-icon-low.png", into: directory, padding: 8, menubarContrast: .low)
+        write(MenuBarLabelView(model: seeded(PreviewData.criticalState())), name: "menubar-icon-critical.png", into: directory, padding: 8, menubarContrast: .critical)
         write(MenuBarLabelView(model: seeded(PreviewData.freshState())), name: "menubar-icon-gray.png", into: directory, padding: 8)
 
         print("已渲染到:\(directory.path)")
@@ -91,7 +91,8 @@ enum DevPreviewRenderer {
         name: String,
         into directory: URL,
         appearance: NSAppearance.Name = .aqua,
-        padding: CGFloat = 0
+        padding: CGFloat = 0,
+        menubarContrast: ProviderStatus? = nil
     ) {
         let content = view.padding(padding)
         let hosting = NSHostingView(rootView: content)
@@ -120,6 +121,9 @@ enum DevPreviewRenderer {
         }
         try? data.write(to: directory.appendingPathComponent(name))
         report(name: name, hosting: hosting, rep: rep, imageData: data)
+        if let state = menubarContrast {
+            menubarContrastReport(state: state, appearance: "浅色", rep: rep)
+        }
 
         // 深色形态仅供人工/OCR 核对文案与暗色适配
         hosting.appearance = NSAppearance(named: .darkAqua)
@@ -129,6 +133,9 @@ enum DevPreviewRenderer {
             if let darkData = darkRep.representation(using: .png, properties: [:]) {
                 try? darkData.write(to: directory.appendingPathComponent("dark-" + name))
                 report(name: "dark-" + name, hosting: hosting, rep: darkRep, imageData: darkData)
+                if let state = menubarContrast {
+                    menubarContrastReport(state: state, appearance: "深色", rep: darkRep)
+                }
             }
         }
     }
@@ -166,6 +173,35 @@ enum DevPreviewRenderer {
             return l.minX < r.minX
         }
         return observations.compactMap { $0.topCandidates(1).first?.string }
+    }
+
+    /// 菜单栏图标对比度报告(IC-1 验收):取样字形核心像素(不透明像素的众数,抗锯齿只影响边缘),
+    /// 按审计 #25 的栏底基线算 WCAG 对比度。取原始像素值(设备色空间),与审计同口径。
+    private static func menubarContrastReport(state: ProviderStatus, appearance: String, rep: NSBitmapImageRep) {
+        let lightBaseline = StatusColorComponents(r8: 238, g8: 238, b8: 238) // 审计实测浅色栏
+        let darkBaseline = StatusColorComponents(r8: 52, g8: 52, b8: 56) // 审计实测深色栏
+
+        var counts: [Int: Int] = [:]
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let color = rep.colorAt(x: x, y: y), color.alphaComponent > 0.95 else { continue }
+                guard let rgb = color.cgColor.components, rgb.count >= 3 else { continue }
+                let key = (Int(rgb[0] * 255) << 16) | (Int(rgb[1] * 255) << 8) | Int(rgb[2] * 255)
+                counts[key, default: 0] += 1
+            }
+        }
+        guard let (key, _) = counts.max(by: { $0.value < $1.value }) else {
+            print("- 菜单栏对比度(\(appearance) \(state.rawValue)):未取到字形像素")
+            return
+        }
+        let glyph = StatusColorComponents(
+            r8: (key >> 16) & 0xFF,
+            g8: (key >> 8) & 0xFF,
+            b8: key & 0xFF
+        )
+        let light = glyph.contrastRatio(against: lightBaseline)
+        let dark = glyph.contrastRatio(against: darkBaseline)
+        print("- 菜单栏对比度(\(appearance) \(state.rawValue)):字形 rgb=(\((key >> 16) & 0xFF),\((key >> 8) & 0xFF),\(key & 0xFF))  浅色栏 \(String(format: "%.2f", light)):1  深色栏 \(String(format: "%.2f", dark)):1")
     }
 
     /// 完全透明/纯背景像素的占比:接近 100% 说明视图没画出来。

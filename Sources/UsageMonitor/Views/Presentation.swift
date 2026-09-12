@@ -3,12 +3,25 @@ import UsageMonitorCore
 
 /// 展示层的映射:消费引擎的 status / 快照,不自行计算阈值。
 enum Presentation {
-    static func color(for status: ProviderStatus?) -> Color {
+    /// 三态状态色,外观感知:浅色用 `StatusPalette` 加深变体(IC-1,#31),深色维持系统色;
+    /// 无数据用 secondary。popover / 焦点卡同一调色板。
+    static func color(for status: ProviderStatus?, scheme: ColorScheme) -> Color {
+        guard let status else { return .secondary }
+        if scheme == .light {
+            return color(from: StatusPalette.lightVariant(for: status))
+        }
+        return systemColor(for: status)
+    }
+
+    private static func color(from components: StatusColorComponents) -> Color {
+        Color(red: components.red, green: components.green, blue: components.blue)
+    }
+
+    private static func systemColor(for status: ProviderStatus) -> Color {
         switch status {
         case .normal: return .green
         case .low: return .yellow
         case .critical: return .red
-        case nil: return .secondary
         }
     }
 
@@ -58,13 +71,13 @@ struct MenuBarPresentation {
     let text: String
     let color: Color
 
-    init(state: EngineState) {
+    init(state: EngineState, scheme: ColorScheme) {
         if let percent = state.overview.iconPercent {
             text = "\(percent)%"
-            color = Presentation.color(for: state.overview.worstStatus ?? .normal)
+            color = Presentation.color(for: state.overview.worstStatus ?? .normal, scheme: scheme)
         } else {
             text = "—"
-            color = Presentation.color(for: nil)
+            color = Presentation.color(for: nil, scheme: scheme)
         }
     }
 }
