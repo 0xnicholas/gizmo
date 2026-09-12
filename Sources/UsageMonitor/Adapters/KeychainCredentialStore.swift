@@ -8,6 +8,13 @@ import UsageMonitorCore
 struct KeychainCredentialStore: CredentialStore {
     static let service = "com.nicholasli.usagemonitor.credentials"
 
+    /// 测试/冒烟可用独立 service 隔离;生产固定用 `Self.service`。
+    private let service: String
+
+    init(service: String = KeychainCredentialStore.service) {
+        self.service = service
+    }
+
     enum Failure: LocalizedError, Equatable {
         case unexpectedStatus(OSStatus)
         case corruptedValue
@@ -78,8 +85,28 @@ struct KeychainCredentialStore: CredentialStore {
     private func baseQuery(for provider: Provider) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
+            kSecAttrService as String: service,
             kSecAttrAccount as String: provider.rawValue,
         ]
     }
 }
+
+#if DEBUG
+/// 开发期故障注入(仅 DEBUG,`--simulate-keychain-failure`):读照常,任何写入/清除都必然失败,
+/// 用于人工验证设置窗口的红色失败横幅与「失败不清空输入」行为。
+struct WriteFailingCredentialStore: CredentialStore {
+    let base: any CredentialStore
+
+    func credential(for provider: Provider) throws -> String? {
+        try base.credential(for: provider)
+    }
+
+    func save(_ value: String, for provider: Provider) throws {
+        throw KeychainCredentialStore.Failure.unexpectedStatus(-34018)
+    }
+
+    func delete(for provider: Provider) throws {
+        throw KeychainCredentialStore.Failure.unexpectedStatus(-34018)
+    }
+}
+#endif

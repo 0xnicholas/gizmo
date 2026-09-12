@@ -134,7 +134,7 @@ struct SettingsWindowView: View {
 
             field(for: provider)
 
-            Text(hint(for: provider) + " 保存时自动去除首尾空白。")
+            Text(hint(for: provider))
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
 
@@ -146,7 +146,7 @@ struct SettingsWindowView: View {
             }
 
             Divider()
-            Text("凭据与 pi 无关,由本 app 自管;值只写入系统钥匙串并在进程内使用,不落日志、不进快照。")
+            Text("凭据与 pi 无关,仅存本机钥匙串:值只在进程内使用,不落日志、不进快照。")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
             HStack {
@@ -251,19 +251,28 @@ struct SettingsWindowView: View {
     }
 
     private func placeholder(_ provider: Provider) -> String {
-        switch provider {
-        case .deepseek: return state(provider).credential == .configured ? "已配置 · 粘贴新值可覆盖" : "sk-…"
-        case .kimi: return state(provider).credential == .configured ? "已配置 · 粘贴新值可覆盖" : "粘贴 Kimi for Coding token…"
-        case .glm: return state(provider).credential == .configured ? "已配置 · 粘贴新值可覆盖" : "粘贴 GLM 套餐 API key…"
+        // 已存凭据(含已失效)只展示固定长度遮蔽,不暴露真实值或长度;直接输入即覆盖。
+        switch state(provider).credential {
+        case .configured, .invalid:
+            return "••••••••••••"
+        case .missing:
+            switch provider {
+            case .deepseek: return "sk-…"
+            case .kimi: return "粘贴 Kimi for Coding token…"
+            case .glm: return "粘贴 GLM 套餐 API key…"
+            }
         }
     }
 
     private func hint(for provider: Provider) -> String {
+        let base: String
         switch provider {
-        case .deepseek: return "粘贴 API key(sk- 开头,作为 Bearer 使用)。"
-        case .kimi: return "粘贴访问 token(整段复制)。"
-        case .glm: return "粘贴套餐 API key(裸 key,无 Bearer 前缀)。"
+        case .deepseek: base = "粘贴 API key(sk- 开头,作为 Bearer 使用)。"
+        case .kimi: base = "粘贴访问 token(整段复制)。"
+        case .glm: base = "粘贴套餐 API key(裸 key,无 Bearer 前缀)。"
         }
+        let configured = state(provider).credential == .configured ? "已配置,粘贴新值即覆盖。" : ""
+        return base + configured + "保存时自动去除首尾空白。"
     }
 
     private func statusText(_ credential: CredentialState) -> String {

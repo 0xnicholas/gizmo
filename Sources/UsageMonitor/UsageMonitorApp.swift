@@ -20,7 +20,22 @@ struct UsageMonitorApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let model = AppModel()
+    let model: AppModel
+
+    override init() {
+        model = AppModel(credentials: Self.makeCredentialStore())
+        super.init()
+    }
+
+    /// DEBUG 下 `--simulate-keychain-failure` 注入「写入必失败、读取照常」,用于人工验证红横幅路径。
+    private static func makeCredentialStore() -> any CredentialStore {
+        #if DEBUG
+        if CommandLine.arguments.contains("--simulate-keychain-failure") {
+            return WriteFailingCredentialStore(base: KeychainCredentialStore())
+        }
+        #endif
+        return KeychainCredentialStore()
+    }
 
     private var settingsController: SettingsWindowController?
     private var activity: NSObjectProtocol?

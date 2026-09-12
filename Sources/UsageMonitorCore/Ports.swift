@@ -1,8 +1,14 @@
 import Foundation
 
-/// 凭据读取端口:每次刷新现读,不缓存;UI 只感知「已配置 / 缺失 / 失效」,不感知值。
+/// 凭据存取端口:引擎每次刷新现读(不缓存、不监听);设置面经同一端口写入/清除。
+/// UI 只感知「已配置 / 缺失 / 失效」状态,不感知值。
 public protocol CredentialStore: Sendable {
+    /// 读取凭据;不存在返回 nil。实现须去除返回值首尾空白,全空白视为不存在。
     func credential(for provider: Provider) throws -> String?
+    /// 覆盖保存;写入失败须抛错。错误描述供设置面展示,不得包含凭据原文。
+    func save(_ value: String, for provider: Provider) throws
+    /// 清除;条目不存在不视为错误。
+    func delete(for provider: Provider) throws
 }
 
 /// 一次 HTTP 响应:只含状态码与响应体(不含请求头,故不可能携带凭据)。

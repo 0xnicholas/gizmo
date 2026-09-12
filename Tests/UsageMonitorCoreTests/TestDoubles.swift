@@ -28,6 +28,7 @@ final class FakeCredentialStore: CredentialStore, @unchecked Sendable {
     private let lock = NSLock()
     private var values: [Provider: String]
     private var readError: (any Error)?
+    private var writeError: (any Error)?
 
     init(values: [Provider: String] = [:]) {
         self.values = values
@@ -47,6 +48,13 @@ final class FakeCredentialStore: CredentialStore, @unchecked Sendable {
         readError = nil
     }
 
+    /// 构造「写入/清除失败」(设置面保存失败红横幅路径)。
+    func failWrites(with error: any Error) {
+        lock.lock()
+        defer { lock.unlock() }
+        writeError = error
+    }
+
     func set(_ value: String?, for provider: Provider) {
         lock.lock()
         defer { lock.unlock() }
@@ -57,7 +65,23 @@ final class FakeCredentialStore: CredentialStore, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if let readError { throw readError }
-        return values[provider]
+        guard let value = values[provider] else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func save(_ value: String, for provider: Provider) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if let writeError { throw writeError }
+        values[provider] = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func delete(for provider: Provider) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if let writeError { throw writeError }
+        values[provider] = nil
     }
 }
 

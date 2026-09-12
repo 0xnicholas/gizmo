@@ -38,6 +38,17 @@ enum DevPreviewRenderer {
         write(SettingsWindowView(model: seeded(PreviewData.errorState(), selection: .provider(.kimi))), name: "settings-invalid.png", into: directory)
         write(SettingsWindowView(model: seeded(PreviewData.freshState(), selection: .provider(.deepseek))), name: "settings-missing.png", into: directory)
 
+        // 设置窗口:保存成功 / 钥匙串写入失败横幅(与 --simulate-keychain-failure 同一文案路径)
+        let savedNotice = seeded(PreviewData.overviewState(), selection: .provider(.glm))
+        savedNotice.injectCredentialNotice(.saved, for: .glm)
+        write(SettingsWindowView(model: savedNotice), name: "settings-saved-notice.png", into: directory)
+        let keychainError = seeded(PreviewData.overviewState(), selection: .provider(.glm))
+        keychainError.injectCredentialNotice(
+            .error(KeychainCredentialStore.Failure.unexpectedStatus(-34018).localizedDescription),
+            for: .glm
+        )
+        write(SettingsWindowView(model: keychainError), name: "settings-keychain-error.png", into: directory)
+
         // 菜单栏图标(数字 + 三态变色)
         write(MenuBarLabelView(model: seeded(PreviewData.overviewState())), name: "menubar-label.png", into: directory, padding: 8)
 

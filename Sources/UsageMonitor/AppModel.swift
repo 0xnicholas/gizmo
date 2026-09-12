@@ -48,19 +48,20 @@ final class AppModel: ObservableObject {
     var requestCloseSettings: (() -> Void)?
 
     private let engine: UsageEngine
-    private let keychain = KeychainCredentialStore()
+    private let credentials: any CredentialStore
     private let presenter = NotificationPresenter()
     private let defaults: UserDefaults
     private var pollTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, credentials: any CredentialStore = KeychainCredentialStore()) {
         self.defaults = defaults
+        self.credentials = credentials
         let clock = SystemClock()
         self.state = EngineState(providers: Dictionary(
             uniqueKeysWithValues: Provider.allCases.map { ($0, ProviderRuntimeState(provider: $0)) }
         ))
         self.engine = UsageEngine(
-            credentials: KeychainCredentialStore(),
+            credentials: credentials,
             fetchers: [
                 .deepseek: DeepSeekFetcher(),
                 .kimi: KimiFetcher(),
@@ -84,6 +85,11 @@ final class AppModel: ObservableObject {
     /// 仅供开发期离屏渲染与 SwiftUI 预览注入样例状态(发布路径不受影响)。
     func injectPreviewState(_ state: EngineState) {
         self.state = state
+    }
+
+    /// 仅供离屏渲染注入反馈横幅(保存成功 / 钥匙串失败)。
+    func injectCredentialNotice(_ notice: CredentialNotice?, for provider: Provider) {
+        credentialNotices[provider] = notice
     }
     #endif
 
@@ -178,28 +184,24 @@ final class AppModel: ObservableObject {
     /// 保存成功返回 true(供设置界面决定是否清空输入框)。
     @discardableResult
     func saveCredential(_ value: String, for provider: Provider) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            credentialNotices[provider] = .error("请先粘贴凭据内容")
-            return false
-        }
-        do {
-            try keychain.save(trimmed, for: provider)
+        switch CredentialEditing.save(value, to: credentials, for: provider) {
+        case .saved:
             credentialNotices[provider] = .saved
             notice = nil
             refresh(provider)
             return true
-        } catch {
-            credentialNotices[provider] = .error(error.localizedDescription)
+        case .rejectedEmpty:
+            credentialNotices[provider] = .error("请先粘贴凭据内容")
+            return false
+        case .failed(let message):
+            credentialNotices[provider] = .error(message)
             return false
         }
     }
 
     func clearCredential(for provider: Provider) {
-        do {
-            try keychain.delete(for: provider)
-        } catch {
-            credentialNotices[provider] = .error(error.localizedDescription)
+        if let message = CredentialEditing.clear(provider, in: credentials) {
+            credentialNotices[provider] = .error(message)
             return
         }
         credentialNotices[provider] = nil

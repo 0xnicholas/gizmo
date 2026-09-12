@@ -20,6 +20,10 @@ let package = Package(
             name: "UsageMonitorCoreTests",
             dependencies: ["UsageMonitorCore"]
         ),
+        .testTarget(
+            name: "UsageMonitorAppTests",
+            dependencies: ["UsageMonitor"]
+        ),
     ],
     swiftLanguageModes: [.v5]
 )
