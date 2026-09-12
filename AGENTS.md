@@ -43,3 +43,23 @@ PNG 供人工验收对照 `prototype/*` 分支形态。发布构建不含该入�
 
 验证 Keychain 失败路径(红横幅 + 失败不清空输入):DEBUG 构建加 `--simulate-keychain-failure` 启动,
 保存任意一家的凭据即可看到错误码 -34018 的红色横幅;读取照常,不动真实钥匙串内容。
+
+## 真实链路冒烟(DEBUG)
+
+策略逻辑已由 `swift test`(虚拟时钟 + 假件)覆盖;以下入口用**真实适配器 → 三家真实端点 → 解析归一化 → 原子落盘**验证数据链路(仅 DEBUG 构建):
+
+```sh
+# 凭据优先取环境变量(仅进程内存,永不回显),缺者回落 Keychain:
+export SMOKE_DEEPSEEK=…   # DeepSeek API key
+export SMOKE_KIMI=…       # Kimi for Coding 整段 token
+export SMOKE_GLM=…        # GLM 裸 key
+
+.build/debug/UsageMonitor --smoke-fetch          # 启动先发缓存 → 新鲜刷新 → 落盘回读;连跑两次即验「杀 App 重启先显旧数据」
+.build/debug/UsageMonitor --smoke-poll 5 3       # 真实时钟短周期轮询(AppModel 真实循环;验收 30 分钟策略的缩比验证)
+.build/debug/UsageMonitor --smoke-auth deepseek  # 假凭据 → 真实 401 → 重试一次 → 凭据失效事件
+.build/debug/UsageMonitor --smoke-outage glm     # 不可路由地址真实超时 ×3 轮 → 加载失败 → 恢复;单家失败不牵连他者
+```
+
+- 输出只含归一化字段与脱敏失败描述:不含凭据原文、不含 raw;失败路径不写缓存、不写钥匙串(只读冒烟)。
+- 落盘回读按秒级容差比对(iso8601 落盘舍去亚秒精度)。
+- 防 App Nap(`beginActivity(.background)`)在常驻路径生效;长挂 1 小时图标仍更新的浸泡验证需人工。

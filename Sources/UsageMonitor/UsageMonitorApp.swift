@@ -50,6 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApplication.shared.terminate(nil)
             return
         }
+        // 真实链路冒烟(--smoke-fetch / --smoke-poll / --smoke-auth / --smoke-outage):跑完即退。
+        if SmokeRunner.isRequested {
+            Task { @MainActor in
+                await SmokeRunner.run()
+            }
+            return
+        }
         #endif
 
         // 登录自启的 plist 会 RunAtLoad 拉起新实例;已有实例在跑时直接退出。

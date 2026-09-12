@@ -53,7 +53,11 @@ final class AppModel: ObservableObject {
     private let defaults: UserDefaults
     private var pollTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard, credentials: any CredentialStore = KeychainCredentialStore()) {
+    init(
+        defaults: UserDefaults = .standard,
+        credentials: any CredentialStore = KeychainCredentialStore(),
+        thresholds: Thresholds = Thresholds()
+    ) {
         self.defaults = defaults
         self.credentials = credentials
         let clock = SystemClock()
@@ -73,7 +77,8 @@ final class AppModel: ObservableObject {
                 .glm: GLMParser(),
             ],
             cache: FileSnapshotCache(),
-            clock: clock
+            clock: clock,
+            thresholds: thresholds
         )
 
         presenter.onOpen = { [weak self] route in
