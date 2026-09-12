@@ -39,6 +39,11 @@ enum DevPreviewRenderer {
         readFailure.focusProvider = .glm
         write(PopoverView(model: readFailure).frame(width: 360), name: "popover-credential-read-failure.png", into: directory)
 
+        // FC-5:DeepSeek 卡两态——popover-deepseek 不可用(红条),此处常态(无可用状态行)
+        let deepseekNormal = seeded(PreviewData.normalState())
+        deepseekNormal.focusProvider = .deepseek
+        write(PopoverView(model: deepseekNormal).frame(width: 360), name: "popover-deepseek-available.png", into: directory)
+
         // 设置窗口:通用 + 三种凭据形态
         write(SettingsWindowView(model: seeded(PreviewData.overviewState(), selection: .general)), name: "settings-general.png", into: directory)
         // 登录开关两态(通用页;不注入则随本机 plist 漂移,固定两态便于核对)

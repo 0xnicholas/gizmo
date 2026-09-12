@@ -252,6 +252,9 @@ struct DeepSeekBalanceBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if snapshot.meta.accountAvailable == false {
+                unavailableStrip
+            }
             if let currency = snapshot.primaryCurrency {
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(Money.format(snapshot.totalBalance(currency: currency), currency: currency))
@@ -262,10 +265,22 @@ struct DeepSeekBalanceBlock: View {
                     InfoRow(label: "\(currency) 构成", value: composition(currency))
                 }
             }
-            if let available = snapshot.meta.accountAvailable {
-                InfoRow(label: "可用状态", value: available ? "可用" : "不可用(is_available=false)")
-            }
         }
+    }
+
+    /// FC-5:官方标记不可用 → 余额上方红色内联条(复用加载失败条的视觉,文案不带 API 字段名);
+    /// 账户正常时不渲染任何可用性行(常态「可用」是纯噪音)。
+    private var unavailableStrip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .font(.system(size: 11))
+            Text("官方标记账户不可用,以下为最后快照余额")
+                .font(.system(size: 11.5, weight: .semibold))
+            Spacer()
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.12)))
     }
 
     private func composition(_ currency: String) -> String {
