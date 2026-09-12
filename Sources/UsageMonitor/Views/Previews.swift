@@ -122,12 +122,13 @@ enum PreviewData {
         )
     }
 
-    /// 场景形态共用构造:GLM 7 天窗剩余按入参取档,他者健康;glmAge 控制 GLM 数据新旧。
-    private static func scenarioState(glmWeeklyRemaining: Int, glmAge: TimeInterval = freshAge) -> EngineState {
+    /// 场景形态共用构造:GLM 7 天窗剩余按入参取档,他者健康;glmAge 控制 GLM 数据新旧;
+    /// deepseekTotal 控制 DeepSeek 余额档(口径乙验收用 8.20 复现临界)。
+    private static func scenarioState(glmWeeklyRemaining: Int, glmAge: TimeInterval = freshAge, deepseekTotal: String = "62.47") -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
         providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: glmWeeklyRemaining, fetchedAt: Date().addingTimeInterval(-glmAge)))
         providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66))
-        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "62.47"))
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: deepseekTotal))
         return EngineState(
             providers: providers,
             lastRefreshStartedAt: Date().addingTimeInterval(-glmAge),
@@ -170,6 +171,30 @@ enum PreviewData {
             providers: providers,
             lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
             credentialReadFailures: [.glm],
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator()
+            )
+        )
+    }
+
+    /// 口径乙验收(IC-4+IC-5):DeepSeek 余额临界 + GLM 7 天窗 65%(他者健康)——
+    /// 旧口径「红 65%」混叠形态的复现场景;新口径数字应绿。
+    static func deepseekCriticalWithWindowsState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 39_000, deepseekTotal: "8.20")
+    }
+
+    /// DeepSeek-only 临界:仅 DeepSeek 持快照、无任何 plan-window——「彩色 —」
+    /// (余额档给色)的验收形态;旧口径永久灰「—」。
+    static func deepseekOnlyCriticalState() -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(.glm, snapshot: nil, credential: .missing)
+        providers[.kimi] = runtime(.kimi, snapshot: nil, credential: .missing)
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "8.20"))
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
+            lastRefreshFinishedAt: Date().addingTimeInterval(-freshAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
                 evaluator: StatusEvaluator()

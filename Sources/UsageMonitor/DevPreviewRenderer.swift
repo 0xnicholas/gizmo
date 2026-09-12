@@ -87,6 +87,11 @@ enum DevPreviewRenderer {
         write(MenuBarLabelView(model: seeded(PreviewData.staleState())), name: "menubar-icon-stale.png", into: directory, padding: 8, menubarStaleness: true)
         write(MenuBarLabelView(model: seeded(PreviewData.freshState())), name: "menubar-icon-gray.png", into: directory, padding: 8)
 
+        // 口径乙(IC-4+IC-5):DeepSeek 临界 + GLM 窗 65% → 数字绿(旧口径此处红);
+        // DeepSeek-only 临界 → 彩色「—」(旧口径永久灰)。menubarContrast 报告字形 rgb 供验收。
+        write(MenuBarLabelView(model: seeded(PreviewData.deepseekCriticalWithWindowsState())), name: "menubar-icon-deepseek-critical-window65.png", into: directory, padding: 8, menubarContrast: .normal)
+        write(MenuBarLabelView(model: seeded(PreviewData.deepseekOnlyCriticalState())), name: "menubar-icon-deepseek-only-critical.png", into: directory, padding: 8, menubarContrast: .critical)
+
         print("已渲染到:\(directory.path)")
     }
 

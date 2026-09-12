@@ -166,14 +166,22 @@ struct EveryMinute<Content: View>: View {
 }
 
 /// 全局结论数字的呈现口径:数字 = 全局最低 plan-window 剩余%(四舍五入整数,最低 1%),
-/// 颜色 = 全局最差 status(含 DeepSeek 余额档位);无任何窗口数据时灰「—」。
+/// 颜色随数字口径(口径乙,IC-4+IC-5):有窗 = 最紧窗所属 provider 的档位,
+/// 无窗但持快照 = 该家档位给色的「彩色 —」,全无快照 = 灰「—」。
 /// 菜单栏图标与 popover 总览条共用同一映射,两处数字与颜色不打架(用户故事 18)。
+/// 全局最差(含 DeepSeek 余额档)仍由总览条圆点/alertLine 与临界通知兜底。
 struct GlobalPercentPresentation {
     /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3,spec P0-3)。
     static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
 
     let text: String
     let color: Color
+    /// 数字口径的取色档(口径乙,IC-4+IC-5,#41):颜色随数字——有窗 = 最紧窗
+    /// 所属 provider 的 status(即最紧窗自身档位);无任何窗口 = 持快照家的档位
+    /// (现实里 = DeepSeek 余额/可用性档,「彩色 —」);全无快照 = nil(灰)。
+    /// DeepSeek 余额临界不再把数字拉红,由临界通知与总览条(圆点/alertLine
+    /// 仍消费 worstStatus)兜底——「红 65%」混叠形态消灭。
+    let colorStatus: ProviderStatus?
     /// 数字是否陈旧:最紧窗所属 provider 自己的 lastSuccessAt 距 now 超阈值——
     /// 不用全局 lastUpdatedAt,那会被别家成功刷新冲掉,不能反映「这个数字」的新旧。
     let isStale: Bool
@@ -181,14 +189,27 @@ struct GlobalPercentPresentation {
     init(state: EngineState, scheme: ColorScheme, now: Date = Date()) {
         if let percent = state.overview.iconPercent, let tightest = state.overview.tightest {
             text = "\(percent)%"
-            color = Presentation.color(for: state.overview.worstStatus ?? .normal, scheme: scheme)
+            colorStatus = state.provider(tightest.provider).status
+            color = Presentation.color(for: colorStatus, scheme: scheme)
             isStale = state.provider(tightest.provider).lastSuccessAt
                 .map { now.timeIntervalSince($0) > Self.staleThreshold }
                 ?? false
         } else {
             text = "—"
-            color = Presentation.color(for: nil, scheme: scheme)
+            colorStatus = Self.snapshotHolderStatus(state)
+            color = Presentation.color(for: colorStatus, scheme: scheme)
             isStale = false
         }
+    }
+
+    /// 无任何 plan-window 时:有快照的家按自身档位给色(DeepSeek-only 的余额档
+    /// 「彩色 —」);全无快照则灰(全新安装口径不变)。按展示序取第一个持快照家,
+    /// 现实里无窗持快照的只有 DeepSeek。
+    private static func snapshotHolderStatus(_ state: EngineState) -> ProviderStatus? {
+        for provider in Provider.displayOrder {
+            let runtime = state.provider(provider)
+            if runtime.hasSnapshot { return runtime.status }
+        }
+        return nil
     }
 }
