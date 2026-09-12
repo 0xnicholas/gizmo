@@ -307,6 +307,11 @@ struct GlobalOverviewBar: View {
         if let reset = Presentation.resetText(tightest.resetAt) {
             text += " · \(reset)"
         }
+        // 骨架E(P0-4):最紧家加载失败时,副行承认数字是旧的(复用焦点卡「最后成功」口径)。
+        let tightestRuntime = state.provider(tightest.provider)
+        if tightestRuntime.loadFailed, let lastSuccess = tightestRuntime.lastSuccessAt {
+            text += "(最后成功 \(Presentation.time(lastSuccess)))"
+        }
         return text
     }
 

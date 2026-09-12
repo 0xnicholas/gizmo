@@ -69,16 +69,26 @@ enum Presentation {
 /// 颜色 = 全局最差 status(含 DeepSeek 余额档位);无任何窗口数据时灰「—」。
 /// 菜单栏图标与 popover 总览条共用同一映射,两处数字与颜色不打架(用户故事 18)。
 struct GlobalPercentPresentation {
+    /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3,spec P0-3)。
+    static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
+
     let text: String
     let color: Color
+    /// 数字是否陈旧:最紧窗所属 provider 自己的 lastSuccessAt 距 now 超阈值——
+    /// 不用全局 lastUpdatedAt,那会被别家成功刷新冲掉,不能反映「这个数字」的新旧。
+    let isStale: Bool
 
-    init(state: EngineState, scheme: ColorScheme) {
-        if let percent = state.overview.iconPercent {
+    init(state: EngineState, scheme: ColorScheme, now: Date = Date()) {
+        if let percent = state.overview.iconPercent, let tightest = state.overview.tightest {
             text = "\(percent)%"
             color = Presentation.color(for: state.overview.worstStatus ?? .normal, scheme: scheme)
+            isStale = state.provider(tightest.provider).lastSuccessAt
+                .map { now.timeIntervalSince($0) > Self.staleThreshold }
+                ?? false
         } else {
             text = "—"
             color = Presentation.color(for: nil, scheme: scheme)
+            isStale = false
         }
     }
 }

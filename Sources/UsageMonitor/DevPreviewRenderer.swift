@@ -70,10 +70,11 @@ enum DevPreviewRenderer {
         )
         write(SettingsWindowView(model: keychainError), name: "settings-keychain-error.png", into: directory)
 
-        // 菜单栏图标全态:三态色数字 + 灰「—」(验收:数字/色/灰迁移、无角标)
-        write(MenuBarLabelView(model: seeded(PreviewData.normalState())), name: "menubar-icon-normal.png", into: directory, padding: 8, menubarContrast: .normal)
+        // 菜单栏图标全态:三态色数字 + 灰「—」 + 陈旧标记(IC-3:超 2× 轮询间隔降透明度)
+        write(MenuBarLabelView(model: seeded(PreviewData.normalState())), name: "menubar-icon-normal.png", into: directory, padding: 8, menubarContrast: .normal, menubarStaleness: true)
         write(MenuBarLabelView(model: seeded(PreviewData.lowState())), name: "menubar-icon-low.png", into: directory, padding: 8, menubarContrast: .low)
         write(MenuBarLabelView(model: seeded(PreviewData.criticalState())), name: "menubar-icon-critical.png", into: directory, padding: 8, menubarContrast: .critical)
+        write(MenuBarLabelView(model: seeded(PreviewData.staleState())), name: "menubar-icon-stale.png", into: directory, padding: 8, menubarStaleness: true)
         write(MenuBarLabelView(model: seeded(PreviewData.freshState())), name: "menubar-icon-gray.png", into: directory, padding: 8)
 
         print("已渲染到:\(directory.path)")
@@ -92,7 +93,8 @@ enum DevPreviewRenderer {
         into directory: URL,
         appearance: NSAppearance.Name = .aqua,
         padding: CGFloat = 0,
-        menubarContrast: ProviderStatus? = nil
+        menubarContrast: ProviderStatus? = nil,
+        menubarStaleness: Bool = false
     ) {
         let content = view.padding(padding)
         let hosting = NSHostingView(rootView: content)
@@ -124,6 +126,9 @@ enum DevPreviewRenderer {
         if let state = menubarContrast {
             menubarContrastReport(state: state, appearance: "浅色", rep: rep)
         }
+        if menubarStaleness {
+            menubarStalenessReport(appearance: "浅色", rep: rep)
+        }
 
         // 深色形态仅供人工/OCR 核对文案与暗色适配
         hosting.appearance = NSAppearance(named: .darkAqua)
@@ -135,6 +140,9 @@ enum DevPreviewRenderer {
                 report(name: "dark-" + name, hosting: hosting, rep: darkRep, imageData: darkData)
                 if let state = menubarContrast {
                     menubarContrastReport(state: state, appearance: "深色", rep: darkRep)
+                }
+                if menubarStaleness {
+                    menubarStalenessReport(appearance: "深色", rep: darkRep)
                 }
             }
         }
@@ -202,6 +210,25 @@ enum DevPreviewRenderer {
         let light = glyph.contrastRatio(against: lightBaseline)
         let dark = glyph.contrastRatio(against: darkBaseline)
         print("- 菜单栏对比度(\(appearance) \(state.rawValue)):字形 rgb=(\((key >> 16) & 0xFF),\((key >> 8) & 0xFF),\(key & 0xFF))  浅色栏 \(String(format: "%.2f", light)):1  深色栏 \(String(format: "%.2f", dark)):1")
+    }
+
+    /// 菜单栏图标陈旧标记报告(IC-3 验收):字形核心像素的不透明度众数——
+    /// 陈旧时数字整体降透明度(~0.55),新鲜时 1.0。
+    private static func menubarStalenessReport(appearance: String, rep: NSBitmapImageRep) {
+        var buckets: [Int: Int] = [:] // 不透明度按 0.05 分桶,取众数(抗锯齿只影响边缘)
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let color = rep.colorAt(x: x, y: y), color.alphaComponent > 0.2 else { continue }
+                buckets[Int((color.alphaComponent / 0.05).rounded()), default: 0] += 1
+            }
+        }
+        guard let (bucket, _) = buckets.max(by: { $0.value < $1.value }) else {
+            print("- 菜单栏陈旧(\(appearance)):未取到字形像素")
+            return
+        }
+        let alpha = Double(bucket) * 0.05
+        let verdict = alpha < 0.9 ? "带陈旧标记" : "不带标记"
+        print("- 菜单栏陈旧(\(appearance)):字形不透明度 \(String(format: "%.2f", alpha)) → \(verdict)")
     }
 
     /// 完全透明/纯背景像素的占比:接近 100% 说明视图没画出来。

@@ -4,7 +4,13 @@ import UsageMonitorCore
 
 /// 手动验收用的样例数据(占位值,不发网络请求)。原型形态见 `prototype/*` 分支。
 enum PreviewData {
-    static let fetchedAt = Date(timeIntervalSince1970: 1_789_000_000)
+    /// 快照时间相对现在构造:陈旧标记(2× 轮询间隔)的注入才有可控的新旧轴(IC-3)。
+    /// 健康形态默认 5 分钟前(新鲜);渲染产物里的具体时间随渲染时刻漂移,验收只断言模式。
+    static let freshAge: TimeInterval = 5 * 60
+
+    private static func freshFetchedAt() -> Date {
+        Date().addingTimeInterval(-freshAge)
+    }
 
     static func runtime(
         _ provider: Provider,
@@ -25,7 +31,11 @@ enum PreviewData {
         return runtime
     }
 
-    static func glm(rollingUsage: RollingUsage? = .value(amount: 7_500_000, unit: "tokens"), weeklyRemaining: Int = 15_929) -> Snapshot {
+    static func glm(
+        rollingUsage: RollingUsage? = .value(amount: 7_500_000, unit: "tokens"),
+        weeklyRemaining: Int = 15_929,
+        fetchedAt: Date = PreviewData.freshFetchedAt()
+    ) -> Snapshot {
         Snapshot(
             meta: SnapshotMeta(provider: .glm, plan: Plan(level: "pro"), fetchedAt: fetchedAt, concurrencyLimit: nil),
             windows: [
@@ -38,7 +48,7 @@ enum PreviewData {
         )
     }
 
-    static func kimi(dayRemaining: Int = 66) -> Snapshot {
+    static func kimi(dayRemaining: Int = 66, fetchedAt: Date = PreviewData.freshFetchedAt()) -> Snapshot {
         Snapshot(
             meta: SnapshotMeta(provider: .kimi, plan: Plan(level: "Allegretto", domain: "DOMAIN_NEXUS"), fetchedAt: fetchedAt, concurrencyLimit: 20),
             windows: [
@@ -51,7 +61,7 @@ enum PreviewData {
         )
     }
 
-    static func deepseek(total: String = "8.20") -> Snapshot {
+    static func deepseek(total: String = "8.20", fetchedAt: Date = PreviewData.freshFetchedAt()) -> Snapshot {
         let amount = Decimal(string: total, locale: Locale(identifier: "en_US_POSIX"))!
         return Snapshot(
             meta: SnapshotMeta(provider: .deepseek, plan: nil, fetchedAt: fetchedAt, concurrencyLimit: nil, accountAvailable: amount >= 10),
@@ -74,12 +84,12 @@ enum PreviewData {
         return EngineState(providers: providers)
     }
 
-    /// 错误形态:Kimi 凭据失效、GLM 加载失败(仍持有旧数据)、DeepSeek 未配置。
+    /// 错误形态:Kimi 凭据失效、GLM 加载失败(仍持有 3 小时前的旧数据)、DeepSeek 未配置。
     static func errorState() -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
         providers[.glm] = runtime(
             .glm,
-            snapshot: glm(rollingUsage: .failed, weeklyRemaining: 2_000),
+            snapshot: glm(rollingUsage: .failed, weeklyRemaining: 2_000, fetchedAt: Date().addingTimeInterval(-3 * 3_600)),
             loadFailed: true,
             consecutiveFailures: 3
         )
@@ -87,7 +97,7 @@ enum PreviewData {
         providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
         return EngineState(
             providers: providers,
-            lastRefreshStartedAt: fetchedAt,
+            lastRefreshStartedAt: Date().addingTimeInterval(-3 * 3_600),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
                 evaluator: StatusEvaluator()
@@ -103,8 +113,8 @@ enum PreviewData {
         providers[.deepseek] = runtime(.deepseek, snapshot: deepseek())
         return EngineState(
             providers: providers,
-            lastRefreshStartedAt: fetchedAt,
-            lastRefreshFinishedAt: fetchedAt,
+            lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
+            lastRefreshFinishedAt: Date().addingTimeInterval(-freshAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
                 evaluator: StatusEvaluator()
@@ -112,16 +122,16 @@ enum PreviewData {
         )
     }
 
-    /// 场景形态共用构造:GLM 7 天窗剩余按入参取档,他者健康。
-    private static func scenarioState(glmWeeklyRemaining: Int) -> EngineState {
+    /// 场景形态共用构造:GLM 7 天窗剩余按入参取档,他者健康;glmAge 控制 GLM 数据新旧。
+    private static func scenarioState(glmWeeklyRemaining: Int, glmAge: TimeInterval = freshAge) -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
-        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: glmWeeklyRemaining))
+        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: glmWeeklyRemaining, fetchedAt: Date().addingTimeInterval(-glmAge)))
         providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66))
         providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "62.47"))
         return EngineState(
             providers: providers,
-            lastRefreshStartedAt: fetchedAt,
-            lastRefreshFinishedAt: fetchedAt,
+            lastRefreshStartedAt: Date().addingTimeInterval(-glmAge),
+            lastRefreshFinishedAt: Date().addingTimeInterval(-glmAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
                 evaluator: StatusEvaluator()
@@ -144,6 +154,12 @@ enum PreviewData {
         scenarioState(glmWeeklyRemaining: 3_000)
     }
 
+    /// 陈旧形态(IC-3 验收):GLM 数据 90 分钟前(超 2× 轮询间隔)、未进入加载失败态——
+    /// 隔离「图标陈旧标记」与「加载失败」两条呈现路径。
+    static func staleState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 39_000, glmAge: 90 * 60)
+    }
+
     /// 钥匙串读取异常形态:GLM 读取失败(状态未知,仍持旧快照)、Kimi 失效、DeepSeek 未配置。
     static func readFailureState() -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
@@ -152,7 +168,7 @@ enum PreviewData {
         providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
         return EngineState(
             providers: providers,
-            lastRefreshStartedAt: fetchedAt,
+            lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
             credentialReadFailures: [.glm],
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
