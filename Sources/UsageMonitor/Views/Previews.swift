@@ -48,11 +48,11 @@ enum PreviewData {
         )
     }
 
-    static func kimi(dayRemaining: Int = 66, fetchedAt: Date = PreviewData.freshFetchedAt()) -> Snapshot {
+    static func kimi(weekRemaining: Int = 66, fetchedAt: Date = PreviewData.freshFetchedAt()) -> Snapshot {
         Snapshot(
             meta: SnapshotMeta(provider: .kimi, plan: Plan(level: "Allegretto", domain: "DOMAIN_NEXUS"), fetchedAt: fetchedAt, concurrencyLimit: 20),
             windows: [
-                QuotaWindow(kind: .planWindow, label: "日窗口", unit: "会话", limit: 100, used: 100 - dayRemaining, remaining: dayRemaining, resetAt: fetchedAt.addingTimeInterval(8 * 3_600)),
+                QuotaWindow(kind: .planWindow, label: "周窗口", unit: "请求", limit: 100, used: 100 - weekRemaining, remaining: weekRemaining, resetAt: fetchedAt.addingTimeInterval(6 * 86_400)),
                 QuotaWindow(kind: .rateLimit, label: "频限 · 滚动窗(300 分钟)", unit: "请求", limit: 100, used: 10, remaining: 90, resetAt: fetchedAt.addingTimeInterval(1_800)),
             ],
             balances: [Balance(type: .wallet, amount: Decimal(string: "3.5")!, currency: "CNY")],
@@ -93,7 +93,7 @@ enum PreviewData {
             loadFailed: true,
             consecutiveFailures: 3
         )
-        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66), credential: .invalid)
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 66), credential: .invalid)
         providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
         return EngineState(
             providers: providers,
@@ -109,7 +109,7 @@ enum PreviewData {
         var providers: [Provider: ProviderRuntimeState] = [:]
         let glmSnapshot = glm()
         providers[.glm] = runtime(.glm, snapshot: glmSnapshot)
-        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66))
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 66))
         providers[.deepseek] = runtime(.deepseek, snapshot: deepseek())
         return EngineState(
             providers: providers,
@@ -127,7 +127,7 @@ enum PreviewData {
     private static func scenarioState(glmWeeklyRemaining: Int, glmAge: TimeInterval = freshAge, deepseekTotal: String = "62.47") -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
         providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: glmWeeklyRemaining, fetchedAt: Date().addingTimeInterval(-glmAge)))
-        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66))
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 66))
         providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: deepseekTotal))
         return EngineState(
             providers: providers,
@@ -165,7 +165,7 @@ enum PreviewData {
     static func readFailureState() -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
         providers[.glm] = runtime(.glm, snapshot: glm(), credential: .missing)
-        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66), credential: .invalid)
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 66), credential: .invalid)
         providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
         return EngineState(
             providers: providers,

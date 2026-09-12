@@ -206,10 +206,10 @@ enum Payloads {
         """, part: .rollingUsage)
     }
 
-    static func kimi(dayRemaining: Int = 66, rollingRemaining: Int = 90) -> ProviderPayload {
+    static func kimi(weekRemaining: Int = 66, rollingRemaining: Int = 90) -> ProviderPayload {
         .ok("""
         {"user":{"membership":{"level":"LEVEL_INTERMEDIATE"}},
-         "usage":{"limit":"100","used":"\(100 - dayRemaining)","remaining":"\(dayRemaining)","resetTime":"2026-09-10T08:24:54Z"},
+         "usage":{"limit":"100","used":"\(100 - weekRemaining)","remaining":"\(weekRemaining)","resetTime":"2026-09-10T08:24:54Z"},
          "limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},
                     "detail":{"used":"10","limit":"100","remaining":"\(rollingRemaining)","resetTime":"2026-09-09T06:24:54Z"}}],
          "parallel":{"limit":"20"},

@@ -32,7 +32,7 @@ struct StatusTests {
     @Test("频限窗不参与 status 推导")
     func rateLimitExcluded() {
         let snapshot = Fixture.snapshot(provider: .kimi, windows: [
-            Fixture.planWindow(limit: 100, remaining: 50, label: "日窗口", unit: "会话"),
+            Fixture.planWindow(limit: 100, remaining: 50, label: "周窗口", unit: "请求"),
             Fixture.rateLimitWindow(limit: 100, remaining: 1),
         ])
         #expect(evaluator.status(for: snapshot) == .normal)

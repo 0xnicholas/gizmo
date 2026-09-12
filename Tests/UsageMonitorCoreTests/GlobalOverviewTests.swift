@@ -14,13 +14,13 @@ struct GlobalOverviewTests {
                 Fixture.planWindow(limit: 60_000, remaining: 45_000, label: "7 天窗"),
             ]),
             .kimi: Fixture.snapshot(provider: .kimi, windows: [
-                Fixture.planWindow(limit: 100, remaining: 36, label: "日窗口", unit: "会话"),
+                Fixture.planWindow(limit: 100, remaining: 36, label: "周窗口", unit: "请求"),
             ]),
         ]
         let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator)
         #expect(overview.iconPercent == 36)
         #expect(overview.tightest?.provider == .kimi)
-        #expect(overview.tightest?.windowLabel == "日窗口")
+        #expect(overview.tightest?.windowLabel == "周窗口")
     }
 
     @Test("图标数字四舍五入,最低 1%,真 0 显示 0")

@@ -11,20 +11,20 @@ struct KimiParserTests {
         try parser.parse(payload: payload, fetchedAt: Fixture.epoch)
     }
 
-    @Test("日窗 + 300 分钟频限窗 + 并发上限")
+    @Test("周窗 + 300 分钟频限窗 + 并发上限")
     func parsesWindowsAndLimit() throws {
         let snapshot = try parse(.ok(ParserFixtures.kimiUsages))
 
         #expect(snapshot.meta.concurrencyLimit == 20)
         #expect(snapshot.windows.count == 2)
 
-        let day = snapshot.planWindows[0]
-        #expect(day.label == "日窗口")
-        #expect(day.unit == "会话")
-        #expect(day.limit == 100)
-        #expect(day.used == 98)
-        #expect(day.remaining == 2)
-        #expect(day.resetAt == ISO8601DateFormatter().date(from: "2026-09-10T08:24:54Z"))
+        let week = snapshot.planWindows[0]
+        #expect(week.label == "周窗口")
+        #expect(week.unit == "请求")
+        #expect(week.limit == 100)
+        #expect(week.used == 98)
+        #expect(week.remaining == 2)
+        #expect(week.resetAt == ISO8601DateFormatter().date(from: "2026-09-10T08:24:54Z"))
 
         let rateLimit = snapshot.rateLimitWindows[0]
         #expect(rateLimit.label == "频限 · 滚动窗(300 分钟)")
@@ -33,12 +33,12 @@ struct KimiParserTests {
         #expect(rateLimit.resetAt == ISO8601DateFormatter().date(from: "2026-09-09T06:24:54Z"))
     }
 
-    @Test("频限窗不参与 status:日窗 2% → 临界")
+    @Test("频限窗不参与 status:周窗 2% → 临界")
     func statusIgnoresRateLimit() throws {
         let snapshot = try parse(.ok(ParserFixtures.kimiUsages))
         #expect(evaluator.status(for: snapshot) == .critical)
 
-        // 反向:日窗充足、频限吃紧 → 仍为正常
+        // 反向:周窗充足、频限吃紧 → 仍为正常
         let relaxed = ParserFixtures.kimiUsages.replacingOccurrences(of: #""limit":"100","used":"98","remaining":"2""#, with: #""limit":"100","used":"20","remaining":"80""#)
         #expect(evaluator.status(for: try parse(.ok(relaxed))) == .normal)
     }
@@ -124,7 +124,7 @@ struct KimiParserTests {
             ),
             windows: [
                 QuotaWindow(
-                    kind: .planWindow, label: "日窗口", unit: "会话",
+                    kind: .planWindow, label: "周窗口", unit: "请求",
                     limit: 100, used: 98, remaining: 2,
                     resetAt: ISO8601DateFormatter().date(from: "2026-09-10T08:24:54Z")
                 ),

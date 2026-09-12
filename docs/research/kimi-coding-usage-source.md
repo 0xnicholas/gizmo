@@ -17,6 +17,7 @@
   - `limits[0]`:滚动 **300 分钟**窗口 `limit=100, used=10, remaining=90`。
   - `parallel.limit=20`(并发会话上限)。
   - `boosterWallet`:CNY,月充值限额 `¥100`(10000 分),月已用 `¥0`;booster 余额以固定点整数表示(`FIXED_POINT_CENTS = 1e6`,即 `amount/1_000_000` = 货币单位)。
+- **更正(spec 定稿后实测,#48)**:主配额窗「日窗」为误读——后续实测 `usage.resetTime` ≈ +7 天;官方 Kimi CLI 对无 window 字段的 `usage` 默认归一化为 `{duration:1, unit:"week"}`;第三方(CodexBar、pi-kimi-code-console-usage)均按周窗渲染。数据从未缺失,是本文标签错了;上文「每日窗口」请按周窗口理解。
 
 ## 端点规格
 

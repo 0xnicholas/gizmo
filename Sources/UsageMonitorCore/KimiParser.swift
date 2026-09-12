@@ -2,7 +2,9 @@ import Foundation
 
 /// Kimi for Coding 归一化:`/coding/v1/usages` + `/coding/v1/me`。
 ///
-/// - 主额度窗口(`usage`)= 日窗,kind=planWindow。
+/// - 主额度窗口(`usage`)= 周窗,kind=planWindow。resetTime 实测 ≈ +7 天;
+///   官方 Kimi CLI 对无 window 字段的 `usage` 归一化为 {duration:1, unit:"week"}
+///   (#48:原「日窗」标签源自调研期对 reset 时间戳的误读,数据从未缺失)。
 /// - `limits[]` = 滚动频限窗(实测 300 分钟),kind=rateLimit,不参与 status。
 /// - `parallel.limit` = 并发上限 → meta。
 /// - `boosterWallet.balance.amount` 为固定点整数(÷1e6 得货币单位)→ Balance(.wallet)。
@@ -26,8 +28,8 @@ public struct KimiParser: ProviderParser {
         if let usage = JSONReader.object(root["usage"]),
            let window = QuotaWindow.make(
                kind: .planWindow,
-               label: "日窗口",
-               unit: "会话",
+               label: "周窗口",
+               unit: "请求",
                limit: usage["limit"],
                used: usage["used"],
                remaining: usage["remaining"],

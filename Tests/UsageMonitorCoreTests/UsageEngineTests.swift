@@ -321,7 +321,7 @@ struct UsageEngineTests {
     func oneFailureDoesNotAffectOthers() async {
         let harness = EngineHarness(
             payloads: [
-                .kimi: Payloads.kimi(dayRemaining: 50),
+                .kimi: Payloads.kimi(weekRemaining: 50),
                 .deepseek: Payloads.deepseek(total: "100.00"),
             ],
             activeProviders: [.glm, .kimi, .deepseek]
@@ -436,23 +436,23 @@ struct UsageEngineTests {
         #expect(alert.notificationIdentifier == "usage-critical-deepseek")
     }
 
-    @Test("Kimi 日窗口临界:同一带窗口名与窗口级 identifier")
+    @Test("Kimi 周窗口临界:同一带窗口名与窗口级 identifier")
     func kimiWindowAlert() async {
-        // 日窗口 5/100 = 5%:另一家带窗口 provider 的同规则验证(文案 + identifier)
-        let harness = EngineHarness(payloads: [.kimi: Payloads.kimi(dayRemaining: 5)])
+        // 周窗口 5/100 = 5%:另一家带窗口 provider 的同规则验证(文案 + identifier)
+        let harness = EngineHarness(payloads: [.kimi: Payloads.kimi(weekRemaining: 5)])
         let events = await harness.engine.refreshAll()
         let alert = UsageAlert(
             provider: .kimi,
-            basis: .window(label: "日窗口", remaining: 5, limit: 100, unit: "会话", percent: 5)
+            basis: .window(label: "周窗口", remaining: 5, limit: 100, unit: "请求", percent: 5)
         )
         #expect(events.contains(.usageCritical(alert)))
-        #expect(alert.text == "Kimi for Coding 日窗口 剩余 5 会话(5%),已达临界")
-        #expect(alert.notificationIdentifier == "usage-critical-kimi-日窗口")
+        #expect(alert.text == "Kimi for Coding 周窗口 剩余 5 请求(5%),已达临界")
+        #expect(alert.notificationIdentifier == "usage-critical-kimi-周窗口")
     }
 
     @Test("频限窗吃紧不触发临界(只展不判)")
     func rateLimitDoesNotAlert() async {
-        let harness = EngineHarness(payloads: [.kimi: Payloads.kimi(dayRemaining: 66, rollingRemaining: 1)])
+        let harness = EngineHarness(payloads: [.kimi: Payloads.kimi(weekRemaining: 66, rollingRemaining: 1)])
         let events = await harness.engine.refreshAll()
         #expect(!events.contains { $0.notificationKind == "usage" })
         let state = await harness.engine.state
@@ -599,7 +599,7 @@ struct UsageEngineTests {
     func overviewFromEngineState() async {
         let harness = EngineHarness(payloads: [
             .glm: Payloads.glm(fiveHourRemaining: 11_358, weeklyRemaining: 28_200),  // 47%
-            .kimi: Payloads.kimi(dayRemaining: 36),
+            .kimi: Payloads.kimi(weekRemaining: 36),
             .deepseek: Payloads.deepseek(total: "8.00"),
         ])
         _ = await harness.engine.refreshAll()
