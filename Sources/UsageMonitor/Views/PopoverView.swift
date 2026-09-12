@@ -13,9 +13,7 @@ struct PopoverView: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    if !model.bannerDismissed, state.pendingCredentialCount > 0 {
-                        bannerContent
-                    }
+                    bannerContent
                     GlobalOverviewBar(state: state)
                     providerTabs
                     FocusCardView(provider: model.focusProvider, runtime: state.provider(model.focusProvider), model: model)
@@ -114,7 +112,9 @@ struct PopoverView: View {
 
     private var firstPendingProvider: Provider? {
         Provider.displayOrder.first { state.provider($0).credential == .invalid }
-            ?? Provider.displayOrder.first { state.provider($0).credential == .missing }
+            ?? Provider.displayOrder.first {
+                state.provider($0).credential == .missing && !state.credentialReadFailures.contains($0)
+            }
     }
 
     // MARK: - 标签页
@@ -168,17 +168,19 @@ struct PopoverView: View {
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.secondary)
             ForEach(Provider.displayOrder, id: \.self) { provider in
+                let runtime = state.provider(provider)
+                let readFailure = state.credentialReadFailures.contains(provider)
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(credentialColor(state.provider(provider).credential))
+                        .fill(readFailure ? Color.secondary.opacity(0.5) : credentialColor(runtime.credential))
                         .frame(width: 6, height: 6)
                     Text(provider.displayName)
                         .font(.system(size: 11))
-                    Text(credentialText(state.provider(provider).credential))
+                    Text(readFailure ? "未知(钥匙串读取失败)" : credentialText(runtime.credential))
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button(isConfigured(provider) ? "管理" : "去设置") {
+                    Button(isConfigured(provider) || readFailure ? "管理" : "去设置") {
                         model.openSettings(selecting: .provider(provider))
                     }
                     .buttonStyle(.borderless)
@@ -267,7 +269,18 @@ struct GlobalOverviewBar: View {
         Presentation.symbol(for: state.overview.worstStatus)
     }
 
+    /// 全新安装:从未配置过任何凭据且无任何快照;读取异常不算(状态未知时不误判,同首启引导口径)。
+    private var isFreshInstall: Bool {
+        state.overview.snapshotCount == 0
+            && !state.hasAnyCredential
+            && state.credentialReadFailures.isEmpty
+    }
+
     private var title: String {
+        // 从未配置过任何凭据:不会有任何获取,不留「正在获取」的错觉。
+        if isFreshInstall {
+            return "尚未配置凭据"
+        }
         guard let tightest = state.overview.tightest else {
             return state.overview.snapshotCount > 0 ? "暂无窗口数据" : "正在获取用量…"
         }
@@ -275,6 +288,9 @@ struct GlobalOverviewBar: View {
     }
 
     private var subtitle: String {
+        if isFreshInstall {
+            return "菜单栏图标显示「—」;粘贴凭据后自动开始刷新"
+        }
         guard let tightest = state.overview.tightest else {
             return "菜单栏图标显示「—」,直到有套餐窗口数据"
         }

@@ -26,8 +26,10 @@ struct FocusCardView: View {
                 )
             } else if runtime.credential == .missing {
                 CredentialPlaceholder(
-                    title: "未配置凭据",
-                    message: "粘贴 \(provider.displayName) 的凭据后可拉取用量",
+                    title: isCredentialReadFailure ? "凭据状态未知" : "未配置凭据",
+                    message: isCredentialReadFailure
+                        ? "钥匙串读取失败,无法确认该 provider 的凭据是否已配置"
+                        : "粘贴 \(provider.displayName) 的凭据后可拉取用量",
                     provider: provider,
                     model: model,
                     showsSettingsAction: true
@@ -76,6 +78,11 @@ struct FocusCardView: View {
     private var statusForHeader: ProviderStatus? {
         guard runtime.hasSnapshot, runtime.credential == .configured else { return nil }
         return runtime.status
+    }
+
+    /// 钥匙串读取异常:凭据状态未知,不误判为「未配置」。
+    private var isCredentialReadFailure: Bool {
+        model.state.credentialReadFailures.contains(provider)
     }
 
     private func planText(_ plan: Plan) -> String {

@@ -31,6 +31,12 @@ enum DevPreviewRenderer {
         }
         write(PopoverView(model: seeded(PreviewData.freshState())).frame(width: 360), name: "popover-fresh.png", into: directory)
         write(PopoverView(model: seeded(PreviewData.errorState())).frame(width: 360), name: "popover-errors.png", into: directory)
+        write(PopoverView(model: seeded(PreviewData.normalState())).frame(width: 360), name: "popover-normal.png", into: directory)
+        write(PopoverView(model: seeded(PreviewData.lowState())).frame(width: 360), name: "popover-low.png", into: directory)
+        write(PopoverView(model: seeded(PreviewData.criticalState())).frame(width: 360), name: "popover-critical.png", into: directory)
+        let readFailure = seeded(PreviewData.readFailureState())
+        readFailure.focusProvider = .glm
+        write(PopoverView(model: readFailure).frame(width: 360), name: "popover-credential-read-failure.png", into: directory)
 
         // 设置窗口:通用 + 三种凭据形态
         write(SettingsWindowView(model: seeded(PreviewData.overviewState(), selection: .general)), name: "settings-general.png", into: directory)
@@ -49,8 +55,11 @@ enum DevPreviewRenderer {
         )
         write(SettingsWindowView(model: keychainError), name: "settings-keychain-error.png", into: directory)
 
-        // 菜单栏图标(数字 + 三态变色)
-        write(MenuBarLabelView(model: seeded(PreviewData.overviewState())), name: "menubar-label.png", into: directory, padding: 8)
+        // 菜单栏图标全态:三态色数字 + 灰「—」(验收:数字/色/灰迁移、无角标)
+        write(MenuBarLabelView(model: seeded(PreviewData.normalState())), name: "menubar-icon-normal.png", into: directory, padding: 8)
+        write(MenuBarLabelView(model: seeded(PreviewData.lowState())), name: "menubar-icon-low.png", into: directory, padding: 8)
+        write(MenuBarLabelView(model: seeded(PreviewData.criticalState())), name: "menubar-icon-critical.png", into: directory, padding: 8)
+        write(MenuBarLabelView(model: seeded(PreviewData.freshState())), name: "menubar-icon-gray.png", into: directory, padding: 8)
 
         print("已渲染到:\(directory.path)")
     }

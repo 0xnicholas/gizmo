@@ -111,6 +111,55 @@ enum PreviewData {
             )
         )
     }
+
+    /// 场景形态共用构造:GLM 7 天窗剩余按入参取档,他者健康。
+    private static func scenarioState(glmWeeklyRemaining: Int) -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: glmWeeklyRemaining))
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66))
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "62.47"))
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: fetchedAt,
+            lastRefreshFinishedAt: fetchedAt,
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator()
+            )
+        )
+    }
+
+    /// 正常形态:三家全绿(GLM 65% · Kimi 66% · DeepSeek ¥62.47),图标绿「65%」。
+    static func normalState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 39_000)
+    }
+
+    /// 偏低形态:GLM 7 天窗 20%(黄),他者正常,图标黄「20%」。
+    static func lowState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 12_000)
+    }
+
+    /// 临界形态:GLM 7 天窗 5%(红,对照原型 critical 场景),他者健康,图标红「5%」。
+    static func criticalState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 3_000)
+    }
+
+    /// 钥匙串读取异常形态:GLM 读取失败(状态未知,仍持旧快照)、Kimi 失效、DeepSeek 未配置。
+    static func readFailureState() -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(.glm, snapshot: glm(), credential: .missing)
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(dayRemaining: 66), credential: .invalid)
+        providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: fetchedAt,
+            credentialReadFailures: [.glm],
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator()
+            )
+        )
+    }
 }
 
 struct FocusCardPreviews: PreviewProvider {
