@@ -124,6 +124,11 @@ final class AppModel: ObservableObject {
     func injectPreviewLoginItemEnabled(_ enabled: Bool) {
         loginItemEnabled = enabled
     }
+
+    /// 仅供离屏渲染注入脚注「刷新中…」态(G,P2-1);渲染路径不跑刷新循环。
+    func injectPreviewIsRefreshing(_ refreshing: Bool) {
+        isRefreshing = refreshing
+    }
     #endif
 
     // MARK: - 生命周期

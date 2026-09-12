@@ -39,6 +39,11 @@ enum DevPreviewRenderer {
         readFailure.focusProvider = .glm
         write(PopoverView(model: readFailure).frame(width: 360), name: "popover-credential-read-failure.png", into: directory)
 
+        // G(P2-1):脚注刷新反馈——刷新中「刷新中…」+ 保留上次更新(完成高亮为瞬时态,人工确认)
+        let refreshing = seeded(PreviewData.overviewState())
+        refreshing.injectPreviewIsRefreshing(true)
+        write(PopoverView(model: refreshing).frame(width: 360), name: "popover-refreshing.png", into: directory)
+
         // FC-5:DeepSeek 卡两态——popover-deepseek 不可用(红条),此处常态(无可用状态行)
         let deepseekNormal = seeded(PreviewData.normalState())
         deepseekNormal.focusProvider = .deepseek

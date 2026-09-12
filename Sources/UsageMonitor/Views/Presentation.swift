@@ -110,6 +110,31 @@ struct CredentialRowPresentation {
     }
 }
 
+/// 脚注刷新反馈口径(G,P2-1,#39):刷新中出「刷新中…」并保留「上次更新」
+/// (屏上数据仍是上次的,不因刷新中抹掉);无任何成功刷新且不在刷新中才显
+/// 「尚未刷新」;刷新完成 highlightDuration 内高亮「上次更新」文本。
+/// 只消费刷新中状态,不动引擎刷新语义。
+struct RefreshFooterPresentation {
+    /// 完成高亮时长(秒):「点了没反应→数据到位」的确认窗口。
+    static let highlightDuration: TimeInterval = 2
+
+    /// 刷新中:「刷新中…」+ 轻 spinner。
+    let showsRefreshingIndicator: Bool
+    /// 从未成功刷新过且不在刷新中:占位「尚未刷新」。
+    let showsNeverRefreshedPlaceholder: Bool
+    /// 刚完成(高亮窗口内且当前不在刷新):「上次更新」文本高亮。
+    let highlightsUpdatedText: Bool
+
+    init(isRefreshing: Bool, hasUpdate: Bool, refreshFinishedAt: Date?, now: Date = Date()) {
+        showsRefreshingIndicator = isRefreshing
+        showsNeverRefreshedPlaceholder = !isRefreshing && !hasUpdate
+        // 完成时刻在未来(时钟倒漂)不算刚完成,与相对时间分档的防御口径一致。
+        highlightsUpdatedText = !isRefreshing && refreshFinishedAt.map { finished in
+            finished <= now && now.timeIntervalSince(finished) < Self.highlightDuration
+        } == true
+    }
+}
+
 /// 每分钟刷新的时间性文本容器(骨架F+FC-1,#37):内部 TimelineView 仅挂载
 /// (即 popover 可见)时运转,无全局定时器;重置倒计时/相对更新等时间性文案共用。
 struct EveryMinute<Content: View>: View {

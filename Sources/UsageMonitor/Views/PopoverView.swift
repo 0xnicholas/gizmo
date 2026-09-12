@@ -237,17 +237,39 @@ struct PopoverView: View {
         }
     }
 
-    // MARK: - 脚注
+    // MARK: - 脚注(G,P2-1:刷新中可见反馈 + 完成短暂高亮)
+
+    /// 刷新完成(isRefreshing 真→假跳变)时刻:驱动「上次更新」高亮窗口。
+    @State private var refreshFinishedAt: Date?
+    /// 高亮窗口到期时自增,强制 body 重算让高亮熄灭(无全局定时器)。
+    @State private var highlightExpiryTick = 0
 
     private var footer: some View {
-        HStack(spacing: 6) {
-            if let updated = state.lastUpdatedAt {
-                // 骨架F:相对化「N 分钟前更新」,≥1h 退回绝对。
+        let _ = highlightExpiryTick
+        let refresh = RefreshFooterPresentation(
+            isRefreshing: model.isRefreshing,
+            hasUpdate: state.lastUpdatedAt != nil,
+            refreshFinishedAt: refreshFinishedAt
+        )
+        return HStack(spacing: 6) {
+            if refresh.showsRefreshingIndicator {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("刷新中…")
+                }
+            }
+            if refresh.showsNeverRefreshedPlaceholder {
+                Text("尚未刷新")
+            } else if let updated = state.lastUpdatedAt {
+                // 骨架F:相对化「N 分钟前更新」,≥1h 退回绝对;刷新中也保留
+                // (屏上数据仍是上次的),完成瞬间短暂高亮(G)。
                 EveryMinute { now in
                     Text(Presentation.updatedAgo(updated, now: now))
                 }
-            } else {
-                Text("尚未刷新")
+                .font(.system(size: 10.5, weight: refresh.highlightsUpdatedText ? .semibold : .regular))
+                .foregroundStyle(refresh.highlightsUpdatedText ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .animation(.easeInOut(duration: 0.35), value: refresh.highlightsUpdatedText)
             }
             Spacer()
             Text("自动刷新 30 分钟")
@@ -260,6 +282,17 @@ struct PopoverView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
+        .onChange(of: model.isRefreshing) { refreshing in
+            // 只记真→假跳变(完成);onChange 不触发于首帧,打开即空闲不会误亮。
+            guard !refreshing else { return }
+            refreshFinishedAt = Date()
+        }
+        .task(id: refreshFinishedAt) {
+            // 高亮窗口过后熄灭;popover 关闭即取消。
+            guard refreshFinishedAt != nil else { return }
+            try? await Task.sleep(nanoseconds: UInt64((RefreshFooterPresentation.highlightDuration + 0.2) * 1_000_000_000))
+            highlightExpiryTick += 1
+        }
     }
 }
 
