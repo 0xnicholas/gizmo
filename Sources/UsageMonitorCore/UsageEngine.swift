@@ -186,13 +186,21 @@ public actor UsageEngine {
             return wasConfigured ? credentialInvalidEvents(provider) : []
         }
 
+        // 现读到值 = 已配置(与启动态一致):否则网络一挂,配置了凭据的家会显示成「未配置」。
+        // 已失效的判定保留到成功刷新才复位,不被「读到值」翻回(另一处判定在 successEvents)。
+        var state = providers[provider] ?? ProviderRuntimeState(provider: provider)
+        if state.credential == .missing {
+            state.credential = .configured
+            providers[provider] = state
+        }
+
         var payload: ProviderPayload
         do {
             payload = try await fetcher.fetch(credential: credential)
         } catch let failure as FetchFailure {
-            return failureEvents(provider, failure: failure)
+            return failureEvents(provider, failure: failure, credential: credential)
         } catch {
-            return failureEvents(provider, failure: .transport(Self.transportDescription(error)))
+            return failureEvents(provider, failure: .transport(Self.transportDescription(error)), credential: credential)
         }
 
         // 401/403:单请求重试一次。
@@ -200,29 +208,29 @@ public actor UsageEngine {
             do {
                 payload = try await fetcher.fetch(credential: credential)
             } catch let failure as FetchFailure {
-                return failureEvents(provider, failure: failure)
+                return failureEvents(provider, failure: failure, credential: credential)
             } catch {
-                return failureEvents(provider, failure: .transport(Self.transportDescription(error)))
+                return failureEvents(provider, failure: .transport(Self.transportDescription(error)), credential: credential)
             }
         }
 
         guard let primary = payload.response(.primary) else {
-            return failureEvents(provider, failure: .transport("响应缺失:primary"))
+            return failureEvents(provider, failure: .transport("响应缺失:primary"), credential: credential)
         }
         if Self.isAuthStatus(primary.statusCode) {
-            return failureEvents(provider, failure: .auth(primary.statusCode))
+            return failureEvents(provider, failure: .auth(primary.statusCode), credential: credential)
         }
         guard primary.statusCode == 200 else {
-            return failureEvents(provider, failure: .http(primary.statusCode))
+            return failureEvents(provider, failure: .http(primary.statusCode), credential: credential)
         }
 
         let snapshot: Snapshot
         do {
             snapshot = try parser.parse(payload: payload, fetchedAt: now)
         } catch let failure as FetchFailure {
-            return failureEvents(provider, failure: failure)
+            return failureEvents(provider, failure: failure, credential: credential)
         } catch {
-            return failureEvents(provider, failure: .parse(String(describing: error)))
+            return failureEvents(provider, failure: .parse(String(describing: error)), credential: credential)
         }
 
         return successEvents(provider, snapshot: snapshot)
@@ -260,10 +268,11 @@ public actor UsageEngine {
         return events
     }
 
-    private func failureEvents(_ provider: Provider, failure: FetchFailure) -> [EngineEvent] {
+    private func failureEvents(_ provider: Provider, failure: FetchFailure, credential: String) -> [EngineEvent] {
         var state = providers[provider] ?? ProviderRuntimeState(provider: provider)
         state.lastAttemptAt = clock.now
         var events: [EngineEvent] = []
+        let descriptor = Self.redactingCredential(failure.descriptor, credential: credential)
 
         if failure.isAuthFailure {
             // authError 与 networkError 分家:不计入加载失败轮数。
@@ -271,9 +280,9 @@ public actor UsageEngine {
                 state.credential = .invalid
                 events.append(contentsOf: credentialInvalidEvents(provider))
             }
-            state.failureDescriptor = failure.descriptor
+            state.failureDescriptor = descriptor
         } else {
-            state.failureDescriptor = failure.descriptor
+            state.failureDescriptor = descriptor
             state.consecutiveFailures += 1
             if state.consecutiveFailures >= thresholds.failureRoundsBeforeLoadFailure, !state.loadFailed {
                 state.loadFailed = true
@@ -354,6 +363,17 @@ public actor UsageEngine {
     static func isAuthStatus(_ statusCode: Int) -> Bool {
         statusCode == 401 || statusCode == 403
     }
+
+    /// 端口约定是「错误文案不含凭据」;这里做纵深防御:适配器违约(如把请求描述当错误信息)
+    /// 时,落进状态与事件的失败描述也抹掉凭据原文。
+    /// 短于 `minimumRedactableCredentialLength` 的值不替换(这种值不构成有效凭据,替换只会误伤普通文案)。
+    static func redactingCredential(_ text: String, credential: String) -> String {
+        guard credential.count >= minimumRedactableCredentialLength else { return text }
+        return text.replacingOccurrences(of: credential, with: "***")
+    }
+
+    /// 脱敏接受的最小凭据长度。
+    static let minimumRedactableCredentialLength = 4
 
     static func transportDescription(_ error: Error) -> String {
         String(describing: type(of: error))

@@ -2,6 +2,20 @@ import Foundation
 import Testing
 @testable import UsageMonitorCore
 
+@Suite("凭据脱敏(纵深防御)")
+struct CredentialRedactionTests {
+    @Test("长值抹除,短值不动(短值不构成有效凭据,替换只会误伤普通文案)")
+    func redactionRules() {
+        let key = "sk-abcdef123456"
+        #expect(UsageEngine.redactingCredential("Bearer \(key) 超时", credential: key) == "Bearer *** 超时")
+        #expect(UsageEngine.redactingCredential("网络错误(timeout)", credential: key) == "网络错误(timeout)")
+        #expect(UsageEngine.redactingCredential("HTTP abc 500", credential: "abc") == "HTTP abc 500")       // 3 字符:不换
+        #expect(UsageEngine.redactingCredential("HTTP abcd 500", credential: "abcd") == "HTTP *** 500")   // 4 字符:换
+        #expect(UsageEngine.redactingCredential(key + key, credential: key) == "******")  // 多次出现都抹
+        #expect(UsageEngine.redactingCredential("", credential: key).isEmpty)
+    }
+}
+
 @Suite("引擎:刷新编排与状态机")
 struct UsageEngineTests {
 
@@ -146,6 +160,57 @@ struct UsageEngineTests {
         harness.fetchers[.glm]?.respond(with: Payloads.unauthorized())
         let later = await harness.engine.refreshAll()
         #expect(later.contains { $0.notificationKind == "credential" })
+    }
+
+    @Test("凭据失效是跳变沿:停留在失效不重发,恢复(或冷却期过)后再失效才再发")
+    func credentialInvalidIsEdgeTriggered() async {
+        let harness = EngineHarness(activeProviders: [.glm])
+        harness.fetchers[.glm]?.respond(with: Payloads.unauthorized())
+
+        let crossed = await harness.engine.refreshAll()
+        #expect(crossed.contains(.credentialInvalid(.glm)))
+
+        // 仍停留在失效(未恢复)→ 不再发
+        let stayed = await harness.engine.refreshAll()
+        let stayedState = await harness.engine.state
+        #expect(!stayed.contains { $0.notificationKind == "credential" })
+        #expect(stayedState.provider(.glm).credential == .invalid)
+        #expect(stayedState.provider(.glm).consecutiveFailures == 0)  // 始终不计入加载失败轮数
+        #expect(stayedState.provider(.glm).loadFailed == false)
+
+        // 恢复可用 → 复位跳变沿;冷却期过再失效 → 再发
+        harness.fetchers[.glm]?.respond(with: Payloads.glm())
+        #expect(await harness.engine.refreshAll() == [.snapshotUpdated(.glm), .credentialRestored(.glm)])
+
+        harness.clock.advance(25 * 3_600)
+        harness.fetchers[.glm]?.respond(with: Payloads.unauthorized())
+        let again = await harness.engine.refreshAll()
+        #expect(again.contains(.credentialInvalid(.glm)))
+    }
+
+    @Test("刷新现读凭据:读到值即视为已配置,不因网络失败退回「未配置」")
+    func refreshRecordsCredentialPresence() async {
+        // 不跑 start():状态从零开始,只有刷新这一条路径
+        let harness = EngineHarness(activeProviders: [.glm])
+        harness.fetchers[.glm]?.respond(with: .transport("offline"))
+        _ = await harness.engine.refreshAll()
+
+        var state = await harness.engine.state
+        #expect(state.provider(.glm).credential == .configured)  // 有值 ≠ 未配置
+        #expect(state.provider(.glm).consecutiveFailures == 1)
+        #expect(state.pendingCredentialCount == 2)  // 从未现读过的两家才算未配置
+
+        // 已失效的判定不被「读到值」翻回:要成功刷新才复位
+        harness.fetchers[.glm]?.respond(with: Payloads.unauthorized())
+        _ = await harness.engine.refreshAll()
+        state = await harness.engine.state
+        #expect(state.provider(.glm).credential == .invalid)
+
+        harness.fetchers[.glm]?.respond(with: .transport("offline"))
+        _ = await harness.engine.refreshAll()
+        state = await harness.engine.state
+        #expect(state.provider(.glm).credential == .invalid)
+        #expect(state.provider(.glm).failureDescriptor == "网络错误(offline)")
     }
 
     @Test("启动时凭据读取异常:记为「状态未知」,不计入未配置")
@@ -344,6 +409,116 @@ struct UsageEngineTests {
         #expect(!events.contains { $0.notificationKind == "usage" })
         let state = await harness.engine.state
         #expect(state.provider(.kimi).status == .normal)
+    }
+
+    @Test("24h 静默按 provider 隔离:一家在冷却,不牵连另一家首次跨入")
+    func notificationCooldownIsPerProvider() async {
+        let harness = EngineHarness(payloads: [
+            .glm: Payloads.glm(fiveHourRemaining: 590),   // 5% → 临界
+            .deepseek: Payloads.deepseek(total: "100.00"),
+        ])
+        let first = await harness.engine.refreshAll()
+        #expect(first.contains(.usageCritical(UsageAlert(
+            provider: .glm,
+            basis: .window(label: "5 小时窗", remaining: 590, limit: 12_000, unit: "积分", percent: 5)
+        ))))
+
+        // GLM 仍停在临界(静默),DeepSeek 此刻首次跨入临界 → 照发
+        harness.fetchers[.deepseek]?.respond(with: Payloads.deepseek(total: "8.00"))
+        let second = await harness.engine.refreshAll()
+        let notified = second.compactMap { event -> Provider? in
+            guard case .usageCritical(let alert) = event else { return nil }
+            return alert.provider
+        }
+        #expect(notified == [.deepseek])
+
+        let state = await harness.engine.state
+        #expect(state.provider(.glm).status == .critical)  // 确实是被冷却拦下,不是已恢复
+        #expect(state.provider(.deepseek).status == .critical)
+    }
+
+    // MARK: - 端口边界:凭据不外泄、时间为注入时钟
+
+    @Test("凭据原文不进事件、引擎状态、失败描述与落盘快照(适配器把原文写进错误文案也不外泄)")
+    func credentialNeverEscapesThroughOutputs() async {
+        let sentinel = "sk-SENTINEL-2f8c1d4a"
+        let harness = EngineHarness(
+            credentials: [.glm: sentinel, .kimi: sentinel, .deepseek: sentinel],
+            payloads: [.glm: Payloads.glm(fiveHourRemaining: 590), .kimi: Payloads.kimi()]
+        )
+        // 适配器把原文拼进错误文案(常见于第三方库把请求描述当错误信息)
+        harness.fetchers[.kimi]?.respond(with: .transport("Bearer \(sentinel) 请求超时"))
+
+        let events = await harness.engine.refreshAll()
+        let state = await harness.engine.state
+
+        // 断言有意义的前提:凭据确实经端口流过
+        #expect(harness.fetchers[.glm]?.lastCredential == sentinel)
+        #expect(harness.fetchers[.kimi]?.lastCredential == sentinel)
+        #expect(state.provider(.glm).credential == .configured)
+        // 失败描述保留错误语义,但原文被抹掉
+        #expect(state.provider(.kimi).failureDescriptor == "网络错误(Bearer *** 请求超时)")
+
+        // 反射式转储:事件、状态、写盘快照里任何字段都不含原文
+        let stateDump = String(reflecting: state)
+        let cacheDump = String(reflecting: harness.cache.snapshots())
+        let surfaces = events.map { String(reflecting: $0) } + [stateDump, cacheDump]
+        for surface in surfaces {
+            #expect(!surface.contains(sentinel))
+        }
+
+        // 转储确实能看到字段值(否则上面的断言是空转):状态里能看到 provider / 失败描述,
+        // 快照里能看到窗口标签。
+        #expect(stateDump.contains("glm"))
+        #expect(stateDump.contains("Bearer *** 请求超时"))
+        #expect(stateDump.contains("configured"))
+        #expect(cacheDump.contains("5 小时窗"))
+        #expect(events.map { String(reflecting: $0) }.joined().contains("usageCritical"))
+    }
+
+    @Test("时间一律取自注入时钟(1970 哨兵):引擎内不读系统时钟")
+    func timestampsComeFromInjectedClock() async {
+        let frozen = Date(timeIntervalSince1970: 0)
+        let harness = EngineHarness(payloads: [.glm: Payloads.glm()], clock: TestClock(frozen))
+        let events = await harness.engine.refreshAll()
+
+        let state = await harness.engine.state
+        #expect(state.lastRefreshStartedAt == frozen)
+        #expect(state.lastRefreshFinishedAt == frozen)
+        #expect(state.provider(.glm).lastAttemptAt == frozen)
+        #expect(state.provider(.glm).lastSuccessAt == frozen)
+        #expect(state.provider(.glm).snapshot?.meta.fetchedAt == frozen)  // 快照时间戳同样来自时钟
+        #expect(events == [.snapshotUpdated(.glm)])
+        #expect(await harness.engine.nextRefreshAt == frozen.addingTimeInterval(30 * 60))
+    }
+
+    @Test("阈值与静默窗口参数化:换一份 Thresholds 即改判定与冷却")
+    func thresholdsAreInjectableThroughTheEngine() async {
+        var thresholds = Thresholds()
+        thresholds.criticalRemainingFraction = 0.5
+        thresholds.lowRemainingFraction = 0.9
+        thresholds.notificationCooldown = 60
+        let harness = EngineHarness(
+            thresholds: thresholds,
+            payloads: [.glm: Payloads.glm(fiveHourRemaining: 5_900, weeklyRemaining: 31_000)]  // 49.2% / 51.7%
+        )
+
+        let first = await harness.engine.refreshAll()
+        #expect(first.contains { $0.notificationKind == "usage" })  // 默认阈值下 49% 不告警
+        let critical = await harness.engine.state
+        #expect(critical.provider(.glm).status == .critical)
+        #expect(critical.overview.worstStatus == .critical)
+        #expect(critical.overview.iconPercent == 49)
+
+        // 恢复(两种窗均 ≥90%)→ 1 分钟后再次跨入:自定义冷却(60s)已过 → 再发(默认 24h 下会静默)
+        harness.fetchers[.glm]?.respond(with: Payloads.glm(fiveHourRemaining: 11_100, weeklyRemaining: 55_000))
+        let recovered = await harness.engine.refreshAll()
+        #expect(recovered.contains(.usageRecovered(.glm)))
+
+        harness.clock.advance(61)
+        harness.fetchers[.glm]?.respond(with: Payloads.glm(fiveHourRemaining: 5_900, weeklyRemaining: 31_000))
+        let again = await harness.engine.refreshAll()
+        #expect(again.contains { $0.notificationKind == "usage" })
     }
 
     // MARK: - 调度

@@ -93,6 +93,7 @@ final class StubFetcher: ProviderFetching, @unchecked Sendable {
     private let lock = NSLock()
     private var outcomes: [Outcome]
     private var callCountStorage = 0
+    private var receivedCredentialsStorage: [String] = []
 
     /// - Parameter outcomes: 依次消费;用尽后重复最后一个(便于表达「持续同一行为」)。
     init(provider: Provider, outcomes: [Outcome] = []) {
@@ -127,6 +128,14 @@ final class StubFetcher: ProviderFetching, @unchecked Sendable {
         return callCountStorage
     }
 
+    /// 假件实际收到的凭据值:用于断言引擎确实把端口读到的值原样递给了网络端口
+    /// (以及反向断言凭据不会出现在引擎对外发布的任何东西里)。
+    var lastCredential: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return receivedCredentialsStorage.last
+    }
+
     func fetch(credential: String) async throws -> ProviderPayload {
         try nextOutcome(credential: credential).get()
     }
@@ -136,7 +145,7 @@ final class StubFetcher: ProviderFetching, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         callCountStorage += 1
-        _ = credential
+        receivedCredentialsStorage.append(credential)
         guard !outcomes.isEmpty else {
             return .failure(FetchFailure.transport("stub 未配置响应"))
         }

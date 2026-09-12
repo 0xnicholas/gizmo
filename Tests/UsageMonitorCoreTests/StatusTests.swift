@@ -94,6 +94,25 @@ struct StatusTests {
         #expect(evaluator.status(for: snapshot) == .normal)
     }
 
+    @Test("阈值参数化:换一份 Thresholds 即改档位(余额分界同理)")
+    func thresholdsAreInjectable() {
+        #expect(StatusEvaluator().status(forBalance: Decimal(15)) == .low)  // 默认为 ¥10–50 区间
+
+        let custom = StatusEvaluator(thresholds: Thresholds(
+            criticalRemainingFraction: 0.05,
+            lowRemainingFraction: 0.50,
+            deepseekCriticalBalance: 20,
+            deepseekLowBalance: 100
+        ))
+        #expect(custom.status(forBalance: Decimal(15)) == .critical)
+        #expect(custom.status(forBalance: Decimal(50)) == .low)
+        #expect(custom.status(forBalance: Decimal(100)) == .normal)
+        #expect(custom.status(forRemainingFraction: 0.08) == .low)      // 默认阈值下为临界
+        #expect(custom.status(forRemainingFraction: 0.05) == .low)      // 等于临界阈值 → 下一档
+        #expect(custom.status(forRemainingFraction: 0.04) == .critical)
+        #expect(custom.status(forRemainingFraction: 0.50) == .normal)
+    }
+
     @Test("worst 取更差者")
     func worstOf() {
         #expect(ProviderStatus.worst(.normal, .critical) == .critical)
