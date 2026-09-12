@@ -127,12 +127,20 @@ struct PopoverView: View {
                 Button {
                     model.focusProvider = provider
                 } label: {
+                    // P2-5:tab 从纯焦点切换器升为速览——追加各家 plan-window 最低剩余%
+                    // (状态色),不用切两次标签页看另外两家。
+                    let quickFigure = TabPercentPresentation(runtime: state.provider(provider))
+                    let weight: Font.Weight = model.focusProvider == provider ? .semibold : .regular
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(Presentation.color(for: tabStatus(provider), scheme: scheme))
+                            .fill(Presentation.color(for: quickFigure.colorStatus, scheme: scheme))
                             .frame(width: 7, height: 7)
                         Text(shortName(provider))
-                            .font(.system(size: 11.5, weight: model.focusProvider == provider ? .semibold : .regular))
+                            .font(.system(size: 11.5, weight: weight))
+                        Text(quickFigure.text)
+                            .font(.system(size: 11.5, weight: weight))
+                            .monospacedDigit()
+                            .foregroundStyle(Presentation.color(for: quickFigure.colorStatus, scheme: scheme))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
@@ -147,11 +155,6 @@ struct PopoverView: View {
         }
         .padding(2)
         .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.04)))
-    }
-
-    private func tabStatus(_ provider: Provider) -> ProviderStatus? {
-        let runtime = state.provider(provider)
-        return runtime.hasSnapshot ? runtime.status : nil
     }
 
     private func shortName(_ provider: Provider) -> String {

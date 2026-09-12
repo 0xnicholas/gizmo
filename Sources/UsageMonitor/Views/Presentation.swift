@@ -165,6 +165,28 @@ struct EveryMinute<Content: View>: View {
     }
 }
 
+/// 单家 tab 的速览数字口径(P2-5,B,#43):tab 文本追加各家 plan-window 最低
+/// 剩余%——数字与焦点卡窗口行、总览大数字同源(Percent.display,经
+/// StatusEvaluator.lowestPlanWindowFraction,频限窗不参与),不用切两次标签页
+/// 看另外两家。颜色随该家 status,口径乙同型:窗口家色档 = 最紧窗自身色档;
+/// DeepSeek 无窗的「彩色 —」由余额色档给色;无快照家灰「—」。
+/// tab 圆点与数字共用同一取色档(quickFigure.colorStatus),两处不打架。
+struct TabPercentPresentation {
+    let text: String
+    /// 数字口径的取色档:持快照 = 该家 status;无快照 = nil(灰)。
+    let colorStatus: ProviderStatus?
+
+    init(runtime: ProviderRuntimeState) {
+        colorStatus = runtime.hasSnapshot ? runtime.status : nil
+        if let snapshot = runtime.snapshot,
+           let fraction = StatusEvaluator().lowestPlanWindowFraction(in: snapshot) {
+            text = "\(Percent.display(fraction))%"
+        } else {
+            text = "—"
+        }
+    }
+}
+
 /// 全局结论数字的呈现口径:数字 = 全局最低 plan-window 剩余%(四舍五入整数,最低 1%),
 /// 颜色随数字口径(口径乙,IC-4+IC-5):有窗 = 最紧窗所属 provider 的档位,
 /// 无窗但持快照 = 该家档位给色的「彩色 —」,全无快照 = 灰「—」。
