@@ -35,9 +35,9 @@ _Avoid_: 点数、额度(「额度」指 limit 总量,不是单位)
 **balance 余额**:
 无窗口、无重置语义的资金型条目:type(充值/赠送/钱包)、amount、currency。DeepSeek 的余额与 Kimi 的 booster 钱包落这里。余额不参与窗口状态计算。
 
-**rollingUsage 近 7 天用量**:
-「本周用量」的唯一口径:自然滚动 7 天。只在 provider 有直接用量数据源时提供(GLM 由官方时序接口求和);无直接来源的 provider 不显示该值,也不做本地估算。
-_Avoid_: 本周用量、周用量(文案统一「近 7 天」)、估算
+**rollingUsage 近 7 天消耗**:
+自然滚动 7 天的累计消耗量,「本周用量」的唯一口径;与「7 天窗」的窗口剩余是两个口径。只在 provider 有直接用量数据源时提供(GLM 由官方时序接口求和);无直接来源的 provider 不显示该值,也不做本地估算。
+_Avoid_: 本周用量、周用量(文案统一「近 7 天」)、近 7 天用量(旧文案,已弃)、估算
 
 **status 健康状态**:
 由快照推导的 provider 级状态:normal / low / critical。规则:取该 provider 全部 plan-window 类额度窗口剩余百分比的最低值(rate-limit 频限窗不参与,仅卡片展示);无窗口的 provider(DeepSeek)单独按余额档位规则(金额分界参数化)。阈值参数化(默认分界见「图标汇总口径与阈值取值」决议),UI 只消费不计算。

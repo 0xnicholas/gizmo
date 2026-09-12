@@ -32,7 +32,7 @@ struct HTTPClient: Sendable {
     }
 
     /// 附加分片:单独失败不抛出,记录为 `.failure` 交给解析层决定降级形态
-    /// (Kimi 套餐元信息可退;GLM 近 7 天用量显示「— 获取失败」)。
+    /// (Kimi 套餐元信息可退;GLM 近 7 天消耗显示「— 获取失败」)。
     func optional(_ part: FetchPart, url: URL, headers: [String: String], timeout: TimeInterval) async -> FetchPartResult {
         do {
             return .response(try await get(url, headers: headers, timeout: timeout))
@@ -116,13 +116,13 @@ struct GLMFetcher: ProviderFetching {
         ]
         let primary = try await http.get(Endpoints.glmQuota, headers: headers, timeout: 10)
 
-        // 近 7 天用量是附加分片:取不到时归为 .failed,卡片该行显示「— 获取失败」,其余额度照常。
+        // 近 7 天消耗是附加分片:取不到时归为 .failed,卡片该行显示「— 获取失败」,其余额度照常。
         let rolling = await http.optional(.rollingUsage, url: rollingUsageURL(), headers: headers, timeout: 10)
 
         return ProviderPayload(parts: [.primary: .response(primary), .rollingUsage: rolling])
     }
 
-    /// 自然滚动 7 天窗口(近 7 天用量的唯一口径)。
+    /// 自然滚动 7 天窗口(近 7 天消耗的唯一口径)。
     func rollingUsageURL() -> URL {
         let end = clock.now
         let start = end.addingTimeInterval(-7 * 24 * 3_600)

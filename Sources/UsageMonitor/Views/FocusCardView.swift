@@ -113,11 +113,15 @@ struct FocusCardView: View {
         }
 
         // 无直接来源的 provider 根本不出现该行;有来源但获取失败显示「— 获取失败」。
+        // FC-4:「近 7 天消耗」(自然滚动累计,单位 tokens)与「7 天窗」(订阅锚窗剩余,积分)
+        // 是两个口径,文案上可区分,不再像同一件事的两种说法。
+        let rollingLabel = "近 7 天消耗"
         switch snapshot.rollingUsage {
         case .value(let amount, let unit):
-            InfoRow(label: "近 7 天用量", value: "\(Money.formatCount(amount)) \(unit)")
+            InfoRow(label: rollingLabel, value: "\(Money.formatCount(amount)) \(unit)")
         case .failed:
-            InfoRow(label: "近 7 天用量", value: "— 获取失败", valueIsMuted: true)
+            InfoRow(label: rollingLabel, value: "— 获取失败", valueIsMuted: true)
+                .help("该行依赖独立的用量时序接口,获取失败不影响其它额度数据")
         case nil:
             EmptyView()
         }

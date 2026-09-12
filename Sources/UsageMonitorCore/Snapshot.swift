@@ -5,7 +5,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
     public var meta: SnapshotMeta
     public var windows: [QuotaWindow]
     public var balances: [Balance]
-    /// 近 7 天用量:只在 provider 有直接用量数据源时非 nil(见 `RollingUsage`)。
+    /// 近 7 天消耗:只在 provider 有直接用量数据源时非 nil(见 `RollingUsage`)。
     public var rollingUsage: RollingUsage?
     /// 原始响应原文(不含任何请求头),未知字段不丢。
     public var raw: String

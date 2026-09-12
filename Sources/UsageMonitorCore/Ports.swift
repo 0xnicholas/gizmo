@@ -26,13 +26,13 @@ public struct FetchResponse: Equatable, Sendable {
 public enum FetchPart: String, Codable, Sendable {
     /// 主数据端点:DeepSeek `/user/balance`、Kimi `/coding/v1/usages`、GLM `/api/monitor/usage/quota/limit`。
     case primary
-    /// GLM 近 7 天用量时序(`/model-usage`)。
+    /// GLM 近 7 天消耗时序(`/model-usage`)。
     case rollingUsage
     /// Kimi 账户资料(`/coding/v1/me`):套餐元信息。
     case profile
 }
 
-/// 分片结果:某分片单独失败不影响主分片成快照(如 GLM 近 7 天用量)。
+/// 分片结果:某分片单独失败不影响主分片成快照(如 GLM 近 7 天消耗)。
 public enum FetchPartResult: Equatable, Sendable {
     case response(FetchResponse)
     case failure(FetchFailure)

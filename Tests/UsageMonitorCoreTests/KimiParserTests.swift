@@ -65,7 +65,7 @@ struct KimiParserTests {
         #expect(withoutProfile.meta.plan?.domain == "DOMAIN_NEXUS")
     }
 
-    @Test("无直接来源:近 7 天用量为 nil(卡片不渲染该行)")
+    @Test("无直接来源:近 7 天消耗为 nil(卡片不渲染该行)")
     func hasNoRollingUsage() throws {
         #expect(try parse(.ok(ParserFixtures.kimiUsages)).rollingUsage == nil)
         // profile 失败也不影响主数据

@@ -492,12 +492,12 @@ enum SmokeRunner {
         if let rolling = snapshot.rollingUsage {
             switch rolling {
             case .value(let amount, let unit):
-                lines.append("近 7 天用量:\(amount) \(unit)")
+                lines.append("近 7 天消耗:\(amount) \(unit)")
             case .failed:
-                lines.append("近 7 天用量:获取失败(行级降级,其余照常)")
+                lines.append("近 7 天消耗:获取失败(行级降级,其余照常)")
             }
         } else {
-            lines.append("近 7 天用量:—(该家无直接来源,不渲染)")
+            lines.append("近 7 天消耗:—(该家无直接来源,不渲染)")
         }
         lines.append("status:\(StatusEvaluator(thresholds: Thresholds()).status(for: snapshot))")
         return lines

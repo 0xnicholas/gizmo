@@ -5,7 +5,7 @@ import Foundation
 /// - `limits[]` → planWindow(5 小时窗 / 7 天窗)。`type` schema 在演进:
 ///   未知 type 不建模(原文仍留在 raw),避免污染 status 推导。
 /// - `nextResetTime` 为 epoch 毫秒。
-/// - 近 7 天用量来自时序接口的日桶求和;该分片单独失败时 `rollingUsage = .failed`,
+/// - 近 7 天消耗来自时序接口的日桶求和;该分片单独失败时 `rollingUsage = .failed`,
 ///   其余额度信息照常成快照(不影响卡片其它字段)。
 public struct GLMParser: ProviderParser {
     public init() {}
@@ -87,7 +87,7 @@ public struct GLMParser: ProviderParser {
         }
     }
 
-    /// 近 7 天用量:请求窗口由适配器给定(自然滚动 7 天),此处只做日桶求和。
+    /// 近 7 天消耗:请求窗口由适配器给定(自然滚动 7 天),此处只做日桶求和。
     static func rollingUsage(from result: FetchPartResult?) -> RollingUsage? {
         guard let result else { return nil }
         guard case .response(let response) = result, response.statusCode == 200,

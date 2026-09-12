@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import UsageMonitorCore
 
-@Suite("GLM 额度窗口与近 7 天用量解析")
+@Suite("GLM 额度窗口与近 7 天消耗解析")
 struct GLMParserTests {
     let parser = GLMParser()
     let evaluator = StatusEvaluator()
@@ -39,14 +39,14 @@ struct GLMParserTests {
         #expect(evaluator.status(for: snapshot) == .low)
     }
 
-    @Test("近 7 天用量 = 日桶求和")
+    @Test("近 7 天消耗 = 日桶求和")
     func rollingUsageSumsBuckets() throws {
         let snapshot = try parse(.ok(ParserFixtures.glmQuota)
             .merging(.ok(ParserFixtures.glmModelUsageDaily, part: .rollingUsage)))
         #expect(snapshot.rollingUsage == .value(amount: 7_500_000, unit: "tokens"))
     }
 
-    @Test("近 7 天用量分片失败 → .failed,其余额度照常成快照")
+    @Test("近 7 天消耗分片失败 → .failed,其余额度照常成快照")
     func rollingUsageFailureDoesNotBreakCard() throws {
         let httpFailure = try parse(.ok(ParserFixtures.glmQuota)
             .merging(.response("{}", part: .rollingUsage, statusCode: 500)))
@@ -62,7 +62,7 @@ struct GLMParserTests {
         #expect(businessFailure.rollingUsage == .failed)
     }
 
-    @Test("未请求近 7 天用量分片 → nil(不渲染该行)")
+    @Test("未请求近 7 天消耗分片 → nil(不渲染该行)")
     func rollingUsageAbsent() throws {
         #expect(try parse(.ok(ParserFixtures.glmQuota)).rollingUsage == nil)
     }
