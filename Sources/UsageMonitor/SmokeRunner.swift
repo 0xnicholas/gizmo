@@ -212,22 +212,11 @@ enum SmokeRunner {
     /// 黑洞期间该家请求指向不可路由地址(RFC 5737 TEST-NET-1)制造真实传输超时。
     private static func smokeOutage(provider: Provider) async -> Int32 {
         print("== 冒烟:smoke-outage [\(provider.rawValue)](真实传输超时 ×3 轮 → 加载失败 → 恢复)==")
-        let clock = SystemClock()
-        let blackhole = BlackholeToggleFetcher(wrapping: realFetcher(provider: provider, clock: clock))
+        let blackhole = BlackholeToggleFetcher(wrapping: realFetcher(provider: provider, clock: SystemClock()))
         let store = SmokeCredentialStore(environment: environmentOverrides)
         reportCredentialSources(store)
 
-        let engine = UsageEngine(
-            credentials: store,
-            fetchers: [
-                .deepseek: provider == .deepseek ? blackhole : DeepSeekFetcher(),
-                .kimi: provider == .kimi ? blackhole : KimiFetcher(),
-                .glm: provider == .glm ? blackhole : GLMFetcher(clock: clock),
-            ],
-            parsers: [ .deepseek: DeepSeekParser(), .kimi: KimiParser(), .glm: GLMParser() ],
-            cache: FileSnapshotCache(),
-            clock: clock
-        )
+        let engine = realEngine(credentials: store, fetcherOverrides: [provider: blackhole])
 
         _ = await engine.start()
         guard store.knowsCredential(for: provider) else {
@@ -277,15 +266,17 @@ enum SmokeRunner {
     // MARK: - 真实组件工厂
 
     /// 与 AppModel 同构的真实引擎:真实适配器 + 真实 Keychain(或环境变量覆盖)+ 真实落盘。
-    static func realEngine(credentials: CredentialStore) -> UsageEngine {
+    /// `fetcherOverrides` 供断网冒烟替换个别家的适配器(如黑洞开关),其余家仍走真实适配器。
+    static func realEngine(
+        credentials: CredentialStore,
+        fetcherOverrides: [Provider: any ProviderFetching] = [:]
+    ) -> UsageEngine {
         let clock = SystemClock()
         return UsageEngine(
             credentials: credentials,
-            fetchers: [
-                .deepseek: realFetcher(provider: .deepseek, clock: clock),
-                .kimi: realFetcher(provider: .kimi, clock: clock),
-                .glm: realFetcher(provider: .glm, clock: clock),
-            ],
+            fetchers: Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
+                (provider, fetcherOverrides[provider] ?? realFetcher(provider: provider, clock: clock))
+            }),
             parsers: [ .deepseek: DeepSeekParser(), .kimi: KimiParser(), .glm: GLMParser() ],
             cache: FileSnapshotCache(),
             clock: clock
