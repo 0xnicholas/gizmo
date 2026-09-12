@@ -98,7 +98,7 @@ struct FocusCardView: View {
     @ViewBuilder
     private func dataContent(_ snapshot: Snapshot) -> some View {
         ForEach(Array(snapshot.windows.enumerated()), id: \.offset) { _, window in
-            QuotaWindowRow(window: window)
+            QuotaWindowRow(window: window, fromFailedSnapshot: runtime.loadFailed)
         }
 
         if provider == .deepseek {
@@ -187,6 +187,9 @@ struct FocusCardView: View {
 
 struct QuotaWindowRow: View {
     let window: QuotaWindow
+    /// 该行数据是否来自「加载失败」期间仍持有的旧快照:已过期的重置时间需降灰标注,
+    /// 不误导为有效倒计时。(与图标的「陈旧」概念不同:那个看 2× 轮询间隔,不看失败态。)
+    var fromFailedSnapshot = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -205,10 +208,25 @@ struct QuotaWindowRow: View {
             ProgressView(value: progress)
                 .progressViewStyle(.linear)
                 .tint(tint)
-            if let reset = Presentation.resetText(window.resetAt) {
-                Text(reset)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+            resetLine
+        }
+    }
+
+    /// 重置行(骨架F+FC-1):分档倒计时,绝对时刻进 tooltip。
+    @ViewBuilder
+    private var resetLine: some View {
+        if let resetAt = window.resetAt {
+            EveryMinute { now in
+                if fromFailedSnapshot, resetAt <= now {
+                    Text("已过期(最后成功快照)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                } else {
+                    Text(Presentation.resetCountdown(resetAt, now: now))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .help(Presentation.absoluteReset(resetAt))
+                }
             }
         }
     }

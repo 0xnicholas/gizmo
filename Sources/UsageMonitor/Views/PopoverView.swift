@@ -217,7 +217,10 @@ struct PopoverView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             if let updated = state.lastUpdatedAt {
-                Text("上次更新 \(Presentation.time(updated))")
+                // 骨架F:相对化「N 分钟前更新」,≥1h 退回绝对。
+                EveryMinute { now in
+                    Text(Presentation.updatedAgo(updated, now: now))
+                }
             } else {
                 Text("尚未刷新")
             }
@@ -253,9 +256,12 @@ struct GlobalOverviewBar: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
+                // 重置时刻走分档倒计时(骨架F)。
+                EveryMinute { now in
+                    Text(subtitle(now: now))
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                }
                 if let alertLine {
                     Text(alertLine)
                         .font(.system(size: 10.5, weight: .semibold))
@@ -296,7 +302,7 @@ struct GlobalOverviewBar: View {
         return "全局最紧:\(tightest.provider.displayName) · \(tightest.windowLabel)"
     }
 
-    private var subtitle: String {
+    private func subtitle(now: Date) -> String {
         if isFreshInstall {
             return "菜单栏图标显示「—」;粘贴凭据后自动开始刷新"
         }
@@ -304,8 +310,8 @@ struct GlobalOverviewBar: View {
             return "菜单栏图标显示「—」,直到有套餐窗口数据"
         }
         var text = "剩余 \(Money.formatCount(tightest.remaining)) / \(Money.formatCount(tightest.limit)) \(tightest.unit)"
-        if let reset = Presentation.resetText(tightest.resetAt) {
-            text += " · \(reset)"
+        if let resetAt = tightest.resetAt {
+            text += " · \(Presentation.resetCountdown(resetAt, now: now))"
         }
         // 骨架E(P0-4):最紧家加载失败时,副行承认数字是旧的(复用焦点卡「最后成功」口径)。
         let tightestRuntime = state.provider(tightest.provider)

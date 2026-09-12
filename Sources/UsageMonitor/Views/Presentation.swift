@@ -45,9 +45,34 @@ enum Presentation {
         timeFormatter.string(from: date)
     }
 
-    static func resetText(_ date: Date?) -> String? {
-        guard let date else { return nil }
-        return "重置 " + resetFormatter.string(from: date)
+    // MARK: - 相对时间(骨架F+FC-1,#37):共享 formatter,分档可单测
+
+    /// 重置倒计时:距 now <1h「约 N 分钟后重置」、<24h「约 N 小时后重置」(都向下取整);
+    /// 跨天或已过期退回绝对「重置 MM-dd HH:mm」。失败态旧快照的「已过期」标注是
+    /// 卡片层逻辑(需要 loadFailed 上下文),不在此测。
+    static func resetCountdown(_ resetAt: Date, now: Date) -> String {
+        let seconds = resetAt.timeIntervalSince(now)
+        if seconds > 0, seconds < 3_600 {
+            return "约 \(max(1, Int(seconds / 60))) 分钟后重置"
+        }
+        if seconds >= 3_600, seconds < 86_400 {
+            return "约 \(Int(seconds / 3_600)) 小时后重置"
+        }
+        return absoluteReset(resetAt)
+    }
+
+    /// 倒计时形态的 tooltip/绝对档同形文案:分档遮住的精确时刻。
+    static func absoluteReset(_ resetAt: Date) -> String {
+        "重置 " + resetFormatter.string(from: resetAt)
+    }
+
+    /// 脚注「上次更新」:<1h「N 分钟前更新」(向下取整,最低 1);≥1h 或时钟倒漂退回绝对。
+    static func updatedAgo(_ at: Date, now: Date) -> String {
+        let seconds = now.timeIntervalSince(at)
+        guard seconds >= 0, seconds < 3_600 else {
+            return "上次更新 " + time(at)
+        }
+        return "\(max(1, Int(seconds / 60))) 分钟前更新"
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -63,6 +88,18 @@ enum Presentation {
         formatter.dateFormat = "MM-dd HH:mm"
         return formatter
     }()
+}
+
+/// 每分钟刷新的时间性文本容器(骨架F+FC-1,#37):内部 TimelineView 仅挂载
+/// (即 popover 可见)时运转,无全局定时器;重置倒计时/相对更新等时间性文案共用。
+struct EveryMinute<Content: View>: View {
+    @ViewBuilder let content: (Date) -> Content
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            content(context.date)
+        }
+    }
 }
 
 /// 全局结论数字的呈现口径:数字 = 全局最低 plan-window 剩余%(四舍五入整数,最低 1%),
