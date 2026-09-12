@@ -57,7 +57,9 @@ public struct KimiParser: ProviderParser {
         var balances: [Balance] = []
         if let wallet = JSONReader.object(root["boosterWallet"]),
            let walletBalance = JSONReader.object(wallet["balance"]),
-           let fixedPoint = JSONReader.decimal(walletBalance["amountLeft"] ?? walletBalance["amount"]) {
+           // amountLeft 可能缺省、也可能显式为 null;两种都要退回 amount。
+           let fixedPoint = JSONReader.decimal(walletBalance["amountLeft"])
+               ?? JSONReader.decimal(walletBalance["amount"]) {
             balances.append(Balance(
                 type: .wallet,
                 amount: fixedPoint / Self.fixedPointScale,
@@ -66,16 +68,12 @@ public struct KimiParser: ProviderParser {
         }
 
         var plan: Plan?
-        if let profileResponse = payload.response(.profile), profileResponse.statusCode == 200 {
-            if let profile = try? JSONReader.object(from: profileResponse.body, context: "kimi/me") {
-            let profilePlan = Plan(
-                level: JSONReader.string(profile["user_level_name"])
-                    ?? JSONReader.string(profile["user_level"])
-                    ?? "Kimi for Coding",
-                domain: JSONReader.string(profile["domain_name"])
-            )
-            plan = profilePlan
-            }
+        if let profileResponse = payload.response(.profile), profileResponse.statusCode == 200,
+           let profile = try? JSONReader.object(from: profileResponse.body, context: "kimi/me"),
+           // 只有 /me 真的给出档位名才算数;形状陌生的 200 响应不能顶掉
+           // /usages 里已验证可用的 membership 元信息(否则会拿默认名当档位)。
+           let level = JSONReader.string(profile["user_level_name"]) {
+            plan = Plan(level: level, domain: JSONReader.string(profile["domain_name"]))
         }
         if plan == nil {
             let user = JSONReader.object(root["user"])

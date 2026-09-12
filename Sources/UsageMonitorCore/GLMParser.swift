@@ -59,20 +59,26 @@ public struct GLMParser: ProviderParser {
     /// 已知额度类型。`TIME_LIMIT` 为官方 intl 插件映射的 MCP 月度额度,同属套餐窗口。
     static let modeledTypes: Set<String> = ["CREDIT_LIMIT", "TOKENS_LIMIT", "TIME_LIMIT"]
 
-    /// 窗口展示名。实测:unit=3&number=5 → 5 小时窗;unit=6&number=1 → 7 天窗(订阅锚点)。
-    /// 其余组合保守降级为「窗口」,不猜单位语义。
+    /// 窗口展示名。
+    ///
+    /// - `TOKENS_LIMIT` / `TIME_LIMIT` 的窗口语义由 type 决定(官方 intl 插件映射:
+    ///   Token usage(5 Hour) / MCP usage(1 Month)),不套用 unit/number 编码——
+    ///   该编码只在实测的 `CREDIT_LIMIT` 上验证过,套用会把月度 MCP 额度标成 7 天窗。
+    /// - `CREDIT_LIMIT`(实测):unit=3&number=5 → 5 小时窗;unit=6&number=1 → 7 天窗(订阅锚点)。
+    /// - 其余组合保守降级为「窗口」,不猜单位语义。
     static func label(type: String, unit: Int?, number: Int?) -> String {
+        switch type {
+        case "TIME_LIMIT": return "MCP · 月度窗"
+        case "TOKENS_LIMIT": return "Token · 5 小时窗"
+        default: break
+        }
         var base = "窗口"
         switch (unit, number) {
         case (3, let number?): base = "\(number) 小时窗"
         case (6, let number?): base = number == 1 ? "7 天窗" : "\(number) 周窗"
         default: break
         }
-        switch type {
-        case "TIME_LIMIT": return "MCP · " + base
-        case "TOKENS_LIMIT": return "Token · " + base
-        default: return base
-        }
+        return base
     }
 
     /// 近 7 天用量:请求窗口由适配器给定(自然滚动 7 天),此处只做日桶求和。
