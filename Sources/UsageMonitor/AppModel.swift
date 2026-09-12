@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import UserNotifications
 import UsageMonitorCore
 
 /// 应用状态的单一持有者:把引擎事件翻译为 UI 状态与本地通知,并驱动三层刷新。
@@ -36,11 +37,18 @@ final class AppModel: ObservableObject {
     @Published private(set) var refreshingProvider: Provider?
     @Published private(set) var isRefreshing = false
     @Published var bannerDismissed = false
+    /// popover 是否可见(通知点击直达时判断要不要展开,避免把已开的关掉)。
+    /// 若系统来路导致 onDisappear 未触发而状态滞留 true,通知点击退化为仅预设焦点——
+    /// 与「尽力展开、失败降级」的设计一致,不影响其余功能。
+    @Published private(set) var isPopoverVisible = false
     @Published var settingsSelection: SettingsSelection = .general
     @Published var settingsArrivalBanner = false
     @Published private(set) var credentialNotices: [Provider: CredentialNotice] = [:]
     @Published var notice: Notice?
     @Published private(set) var loginItemEnabled = LoginItem.isEnabled
+    /// 设置窗口「通用」展示的通知授权状态(nil = 尚未查到)。
+    /// UNAuthorizationStatus 属 UserNotifications,不进 UsageMonitorCore。
+    @Published private(set) var notificationAuthorization: UNAuthorizationStatus?
 
     /// 由 AppDelegate 注入:打开设置窗口(选中某家 / 带「正在更新凭据」横幅)。
     var requestOpenSettings: ((SettingsSelection, Bool) -> Void)?
@@ -96,6 +104,14 @@ final class AppModel: ObservableObject {
     func injectCredentialNotice(_ notice: CredentialNotice?, for provider: Provider) {
         credentialNotices[provider] = notice
     }
+
+    /// 仅供离屏渲染注入通知授权状态(通用页通知段的三种文案);注入后刷新让位。
+    func injectPreviewNotificationAuthorization(_ status: UNAuthorizationStatus?) {
+        notificationAuthorization = status
+        previewNotificationAuthorizationFrozen = status != nil
+    }
+
+    private var previewNotificationAuthorizationFrozen = false
     #endif
 
     // MARK: - 生命周期
@@ -106,7 +122,6 @@ final class AppModel: ObservableObject {
 
     private func bootstrap() async {
         await apply(await engine.start())
-        presenter.requestAuthorization()
         applyLoginItemDefault()
         guideFirstRunIfNeeded()
         await refreshAll()
@@ -152,8 +167,13 @@ final class AppModel: ObservableObject {
 
     /// popover 打开:重置横幅关闭状态 + 立即触发一次刷新(先显缓存,再原位更新)。
     func popoverOpened() {
+        isPopoverVisible = true
         bannerDismissed = false
         Task { await refreshAll() }
+    }
+
+    func popoverClosed() {
+        isPopoverVisible = false
     }
 
     private func apply(_ events: [EngineEvent]) async {
@@ -175,10 +195,13 @@ final class AppModel: ObservableObject {
     private func handleNotificationRoute(_ route: NotificationPresenter.Route) {
         switch route {
         case .usage(let provider):
-            // MenuBarExtra 无法以程序方式展开 popover(该场景无 API):
-            // 这里把焦点预设为该家并激活 App,下一次点开 popover 即直达该卡片。
+            // 聚焦该家并尽力展开 popover(MenuBarExtra 无公开 API,尽力模拟点击;
+            // 失败则保持预设焦点,下一次点开 popover 即直达该卡片)。
             focusProvider = provider
             NSApp.activate(ignoringOtherApps: true)
+            if !isPopoverVisible {
+                MenuBarExtraOpener.openPopover()
+            }
         case .credential(let provider):
             openSettings(selecting: .provider(provider), fromCredentialAlert: true)
         }
@@ -215,6 +238,18 @@ final class AppModel: ObservableObject {
 
     func dismissCredentialNotice(for provider: Provider) {
         credentialNotices[provider] = nil
+    }
+
+    // MARK: - 通知
+
+    /// 「通用」页展示授权状态;拒绝后的手动恢复说明也在那里。
+    func refreshNotificationAuthorization() {
+        #if DEBUG
+        guard !previewNotificationAuthorizationFrozen else { return }  // 离屏渲染注入值优先
+        #endif
+        Task { @MainActor in
+            notificationAuthorization = await presenter.authorizationStatus()
+        }
     }
 
     // MARK: - 设置窗口

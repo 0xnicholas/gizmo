@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import SwiftUI
+import UserNotifications
 import UsageMonitorCore
 import Vision
 
@@ -40,6 +41,13 @@ enum DevPreviewRenderer {
 
         // 设置窗口:通用 + 三种凭据形态
         write(SettingsWindowView(model: seeded(PreviewData.overviewState(), selection: .general)), name: "settings-general.png", into: directory)
+        // 通知授权三种文案(通用页通知段;默认渲染只会拍到「查询中…」)
+        let denied = seeded(PreviewData.overviewState(), selection: .general)
+        denied.injectPreviewNotificationAuthorization(.denied)
+        write(SettingsWindowView(model: denied), name: "settings-notification-denied.png", into: directory)
+        let authorized = seeded(PreviewData.overviewState(), selection: .general)
+        authorized.injectPreviewNotificationAuthorization(.authorized)
+        write(SettingsWindowView(model: authorized), name: "settings-notification-authorized.png", into: directory)
         write(SettingsWindowView(model: seeded(PreviewData.overviewState(), selection: .provider(.glm))), name: "settings-configured.png", into: directory)
         write(SettingsWindowView(model: seeded(PreviewData.errorState(), selection: .provider(.kimi))), name: "settings-invalid.png", into: directory)
         write(SettingsWindowView(model: seeded(PreviewData.freshState(), selection: .provider(.deepseek))), name: "settings-missing.png", into: directory)

@@ -27,6 +27,7 @@ struct PopoverView: View {
         }
         .frame(width: 360)
         .onAppear { model.popoverOpened() }
+        .onDisappear { model.popoverClosed() }
     }
 
     // MARK: - 头部

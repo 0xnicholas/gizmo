@@ -13,7 +13,7 @@ private enum NotificationKey {
 }
 
 /// 点击通知的直达语义:临界 → popover 聚焦该家;凭据失效 → 设置窗口选中该家。
-enum NotificationRoute: Equatable {
+enum NotificationRoute: Equatable, Sendable {
     case usage(Provider)
     case credential(Provider)
 }
@@ -34,9 +34,11 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func requestAuthorization() {
-        guard isAvailable else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    /// 供设置窗口展示当前授权状态(拒绝后的手动恢复说明用)。
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        guard isAvailable else { return .notDetermined }
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return settings.authorizationStatus
     }
 
     func post(usageCritical alert: UsageAlert) {
@@ -59,6 +61,7 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
 
     private func post(identifier: String, title: String, body: String, route: Route) {
         guard isAvailable else { return }
+        let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -68,7 +71,21 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
             NotificationKey.kind: route.kind,
         ]
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        // 首次需要时请求授权:notDetermined → 现场弹系统询问,同意才投递本条;
+        // 已拒绝 → 静默跳过(恢复入口在设置窗口说明里)。
+        // add 线程安全,回调队列直接投递即可。
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                center.add(request)
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                    if granted { center.add(request) }
+                }
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - UNUserNotificationCenterDelegate

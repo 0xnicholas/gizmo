@@ -91,6 +91,8 @@ struct SettingsWindowView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Divider()
+            notificationSection
+            Divider()
             Text("凭据与快照只在本机:凭据存系统钥匙串,最近一次成功快照存 Application Support;不做任何上传。")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -102,6 +104,42 @@ struct SettingsWindowView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { model.refreshNotificationAuthorization() }
+    }
+
+    /// 通知:授权状态 + 拒绝后的手动恢复说明(授权本身在首次需要发通知时才请求)。
+    private var notificationSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("通知")
+                .font(.system(size: 12, weight: .semibold))
+            HStack(spacing: 8) {
+                Text(notificationStatusText)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("打开系统通知设置…") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .controlSize(.small)
+                .help("打开「系统设置 › 通知」;在列表中找到「用量监视器」重新允许")
+            }
+            Text("用量跨入临界或凭据失效时发本地通知;首次发出前才会请求授权。若曾拒绝,可在此重新允许。")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var notificationStatusText: String {
+        switch model.notificationAuthorization {
+        case .some(.authorized): return "已授权"
+        case .some(.denied): return "已拒绝(不会发通知)"
+        case .some(.notDetermined): return "未询问(首次需要发通知时询问)"
+        case .some(.provisional), .some(.ephemeral): return "已授权"
+        case .none: return "查询中…"
+        @unknown default: return "未知"
+        }
     }
 
     @ViewBuilder
