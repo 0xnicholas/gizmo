@@ -37,7 +37,7 @@ $SWIFT build
 .build/debug/UsageMonitor --render-previews /tmp/um-previews
 ```
 
-产物覆盖 popover(popover 各焦点 + 全新安装/错误/正常/偏低/临界,浅色 + 深色)、设置窗口(通用 + 三种凭据形态 + 保存成功 + 钥匙串失败横幅)、菜单栏图标全态(绿/黄/红数字 + 灰「—」)。
+产物覆盖 popover(popover 各焦点 + 全新安装/错误/正常/偏低/临界,浅色 + 深色)、设置窗口(通用 + 登录开关两态 + 三种凭据形态 + 保存成功 + 钥匙串失败横幅)、菜单栏图标全态(绿/黄/红数字 + 灰「—」)。
 OCR 输出用于核对文案与布局(该手段已发现过标签页顺序、SF Symbol 缺失、汇总条文案挂错行等问题);
 PNG 供人工验收对照 `prototype/*` 分支形态。发布构建不含该入口(仅 `#if DEBUG`)。
 
@@ -58,6 +58,7 @@ export SMOKE_GLM=…        # GLM 裸 key
 .build/debug/UsageMonitor --smoke-poll 5 3       # 真实时钟短周期轮询(AppModel 真实循环;验收 30 分钟策略的缩比验证)
 .build/debug/UsageMonitor --smoke-auth deepseek  # 假凭据 → 真实 401 → 重试一次 → 凭据失效事件
 .build/debug/UsageMonitor --smoke-outage glm     # 不可路由地址真实超时 ×3 轮 → 加载失败 → 恢复;单家失败不牵连他者
+.build/debug/UsageMonitor --smoke-login-item    # 真实 LaunchAgent 写删 + launchctl 即时加载/卸载(冒烟专用 label + /usr/bin/true,无残留;验收「开关即时生效 + plist 指向可执行文件」,#22)
 ```
 
 - 输出只含归一化字段与脱敏失败描述:不含凭据原文、不含 raw;失败路径不写缓存、不写钥匙串(只读冒烟)。

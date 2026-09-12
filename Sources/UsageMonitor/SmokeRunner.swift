@@ -10,6 +10,7 @@ import UsageMonitorCore
 ///     UsageMonitor --smoke-poll <间隔秒> <轮数>   真实时钟短周期轮询,经 AppModel 真实轮询循环
 ///     UsageMonitor --smoke-auth [provider]        假凭据走真实 401 路径(重试一次 → 凭据失效)
 ///     UsageMonitor --smoke-outage [provider]      真实传输超时 ×3 轮 → 加载失败 → 恢复
+///     UsageMonitor --smoke-login-item             真实 LaunchAgent 写删 + launchctl 即时加载/卸载(#22)
 ///
 /// 凭据仅进程内存、永不回显:优先取环境变量 `SMOKE_DEEPSEEK` / `SMOKE_KIMI` / `SMOKE_GLM`,
 /// 缺者回落真实 Keychain。输出只含归一化字段与脱敏失败描述,不含凭据原文、不含 raw。
@@ -43,6 +44,8 @@ enum SmokeRunner {
             case "--smoke-outage":
                 let provider = argument(after: "--smoke-outage", in: arguments).flatMap(Provider.init(rawValue:)) ?? .deepseek
                 exit(await smokeOutage(provider: provider))
+            case "--smoke-login-item":
+                exit(smokeLoginItem())
             default:
                 throw UsageError("未知冒烟模式:\(arguments.first(where: { $0.hasPrefix("--smoke-") }) ?? "")")
             }
@@ -258,6 +261,70 @@ enum SmokeRunner {
         if !recovered { pass = false; print("  ✗ 未发 loadRecovered 事件") }
         if target.loadFailed || target.consecutiveFailures != 0 { pass = false; print("  ✗ 恢复未清除失败状态") }
         if target.credential != .configured { pass = false; print("  ✗ 网络失败被误判为凭据问题") }
+
+        print(pass ? "\n冒烟通过 ✓" : "\n冒烟失败 ✗")
+        return pass ? 0 : 1
+    }
+
+    // MARK: - --smoke-login-item:真实 LaunchAgent 写删 + 真实 launchctl 即时生效
+
+    /// 覆盖验收(#22):「开关即时生效(不需重启);plist 内容正确指向可执行文件」。
+    /// 用冒烟专用 label + 无害程序(/usr/bin/true,避免 RunAtLoad 递归拉起自身):
+    /// 真实写 ~/Library/LaunchAgents 下冒烟 plist、真实 bootstrap/bootout,
+    /// 结束无残留;生产 label 的真实开关不受影响。下次登录的自启本身需人工验证。
+    private static func smokeLoginItem() -> Int32 {
+        print("== 冒烟:smoke-login-item(真实 plist 写删 + 真实 launchctl 即时加载/卸载)==")
+        let item = LaunchAgentLoginItem(label: "com.nicholasli.usagemonitor.smoke", executablePath: "/usr/bin/true")
+        var pass = true
+
+        func check(_ condition: Bool, _ message: String) {
+            print((condition ? "✓ " : "✗ ") + message)
+            if !condition { pass = false }
+        }
+
+        // 无论成败,恢复无残留。
+        defer {
+            try? item.setEnabled(false)
+            if FileManager.default.fileExists(atPath: item.plistURL.path) {
+                print("清理:冒烟 plist 仍在,请手动删除 \(item.plistURL.path)")
+            }
+        }
+        if item.isEnabled {
+            print("发现上次冒烟残留,先清理再开始")
+            try? item.setEnabled(false)
+        }
+
+        print("\n-- 阶段 1:开启(写 plist + bootstrap 即时加载)")
+        do {
+            try item.setEnabled(true)
+        } catch {
+            print("✗ 开启抛错:\(error)")
+            return 1
+        }
+        check(item.isEnabled, "plist 已落盘:\(item.plistURL.path)")
+        if let plist = try? PropertyListSerialization.propertyList(
+            from: Data(contentsOf: item.plistURL), options: [], format: nil
+        ) as? [String: Any] {
+            check(plist["Label"] as? String == item.label, "plist Label = \(item.label)")
+            check((plist["RunAtLoad"] as? Bool) == true, "plist RunAtLoad = true")
+            check(plist["ProgramArguments"] as? [String] == ["/usr/bin/true"], "plist ProgramArguments 指向可执行文件")
+        } else {
+            check(false, "plist 可解析")
+        }
+        let loaded = LaunchAgentLoginItem.launchctl(["print", item.sessionTarget])
+        check(loaded.status == 0, "launchctl print:服务已在当前会话加载(即时生效,无需重启)")
+        if loaded.status != 0, !loaded.output.isEmpty { print(loaded.output) }
+
+        print("\n-- 阶段 2:关闭(bootout + 删 plist,即时卸载)")
+        do {
+            try item.setEnabled(false)
+        } catch {
+            print("✗ 关闭抛错:\(error)")
+            return 1
+        }
+        check(!item.isEnabled, "plist 已删除")
+        let unloaded = LaunchAgentLoginItem.launchctl(["print", item.sessionTarget])
+        check(unloaded.status != 0, "launchctl print:服务已从当前会话卸载")
 
         print(pass ? "\n冒烟通过 ✓" : "\n冒烟失败 ✗")
         return pass ? 0 : 1

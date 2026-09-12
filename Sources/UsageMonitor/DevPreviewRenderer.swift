@@ -41,6 +41,13 @@ enum DevPreviewRenderer {
 
         // 设置窗口:通用 + 三种凭据形态
         write(SettingsWindowView(model: seeded(PreviewData.overviewState(), selection: .general)), name: "settings-general.png", into: directory)
+        // 登录开关两态(通用页;不注入则随本机 plist 漂移,固定两态便于核对)
+        let loginOn = seeded(PreviewData.overviewState(), selection: .general)
+        loginOn.injectPreviewLoginItemEnabled(true)
+        write(SettingsWindowView(model: loginOn), name: "settings-login-on.png", into: directory)
+        let loginOff = seeded(PreviewData.overviewState(), selection: .general)
+        loginOff.injectPreviewLoginItemEnabled(false)
+        write(SettingsWindowView(model: loginOff), name: "settings-login-off.png", into: directory)
         // 通知授权三种文案(通用页通知段;默认渲染只会拍到「查询中…」)
         let denied = seeded(PreviewData.overviewState(), selection: .general)
         denied.injectPreviewNotificationAuthorization(.denied)

@@ -45,7 +45,7 @@ final class AppModel: ObservableObject {
     @Published var settingsArrivalBanner = false
     @Published private(set) var credentialNotices: [Provider: CredentialNotice] = [:]
     @Published var notice: Notice?
-    @Published private(set) var loginItemEnabled = LoginItem.isEnabled
+    @Published private(set) var loginItemEnabled: Bool
     /// 设置窗口「通用」展示的通知授权状态(nil = 尚未查到)。
     /// UNAuthorizationStatus 属 UserNotifications,不进 UsageMonitorCore。
     @Published private(set) var notificationAuthorization: UNAuthorizationStatus?
@@ -57,6 +57,7 @@ final class AppModel: ObservableObject {
 
     private let engine: UsageEngine
     private let credentials: any CredentialStore
+    private let loginItem: any LoginItemControlling
     private let presenter = NotificationPresenter()
     private let defaults: UserDefaults
     private var pollTask: Task<Void, Never>?
@@ -64,10 +65,13 @@ final class AppModel: ObservableObject {
     init(
         defaults: UserDefaults = .standard,
         credentials: any CredentialStore = KeychainCredentialStore(),
+        loginItem: any LoginItemControlling = LaunchAgentLoginItem(),
         thresholds: Thresholds = Thresholds()
     ) {
         self.defaults = defaults
         self.credentials = credentials
+        self.loginItem = loginItem
+        self.loginItemEnabled = loginItem.isEnabled
         let clock = SystemClock()
         self.state = EngineState(providers: Dictionary(
             uniqueKeysWithValues: Provider.allCases.map { ($0, ProviderRuntimeState(provider: $0)) }
@@ -112,6 +116,11 @@ final class AppModel: ObservableObject {
     }
 
     private var previewNotificationAuthorizationFrozen = false
+
+    /// 仅供离屏渲染注入登录开关两态(通用页);渲染路径不跑 bootstrap,不会回读本机 plist。
+    func injectPreviewLoginItemEnabled(_ enabled: Bool) {
+        loginItemEnabled = enabled
+    }
     #endif
 
     // MARK: - 生命周期
@@ -260,29 +269,30 @@ final class AppModel: ObservableObject {
 
     // MARK: - 登录自启
 
+    /// 开关即时生效;回读落盘事实驱动 UI(失败时开关弹回真实状态)。
+    /// 成功拨动即视为用户已表态,默认逻辑此后不再自动改写。
     func setLoginItem(enabled: Bool) {
-        do {
-            try LoginItem.setEnabled(enabled)
-            loginItemEnabled = LoginItem.isEnabled
+        let outcome = LoginItemEditing.setEnabled(enabled, in: loginItem)
+        loginItemEnabled = loginItem.isEnabled
+        switch outcome {
+        case .applied:
             defaults.set(true, forKey: DefaultsKey.loginItemPreferenceKnown)
-            if loginItemEnabled != enabled {
-                notice = Notice(kind: .error, text: "登录自启设置未生效,请检查 ~/Library/LaunchAgents 权限。")
-            }
-        } catch {
-            notice = Notice(kind: .error, text: "无法更新登录自启:\(error.localizedDescription)")
+        case .failed(let message):
+            notice = Notice(kind: .error, text: message)
         }
     }
 
-    /// 默认开启;一旦用户改过开关,不再自动改写。
-    /// 裸可执行文件(未打包成 .app)没有稳定的登录项身份,不做自动安装。
+    /// 首启默认开启(仅打包身份、仅一次);策略语义见 LoginItemEditing。
     private func applyLoginItemDefault() {
-        guard Bundle.main.bundleIdentifier != nil else { return }
-        guard !defaults.bool(forKey: DefaultsKey.loginItemPreferenceKnown) else { return }
-        defaults.set(true, forKey: DefaultsKey.loginItemPreferenceKnown)
-        if !LoginItem.isEnabled {
-            try? LoginItem.setEnabled(true)
+        let outcome = LoginItemEditing.applyDefault(
+            hasBundleIdentity: Bundle.main.bundleIdentifier != nil,
+            preferenceKnown: defaults.bool(forKey: DefaultsKey.loginItemPreferenceKnown),
+            in: loginItem
+        )
+        if outcome == .applied {
+            defaults.set(true, forKey: DefaultsKey.loginItemPreferenceKnown)
         }
-        loginItemEnabled = LoginItem.isEnabled
+        loginItemEnabled = loginItem.isEnabled
     }
 
     // MARK: - 首次启动引导

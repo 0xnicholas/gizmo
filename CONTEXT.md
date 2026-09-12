@@ -45,3 +45,7 @@ _Avoid_: 本周用量、周用量(文案统一「近 7 天」)、估算
 **credential 凭据**:
 provider 侧的访问凭证:DeepSeek 的 API key、Kimi for Coding 的 token、GLM Coding Plan 的 API key。用户在本 app 的设置界面配置,app 不依赖任何外部登录态;值只在进程内存在,由数据层消费,UI 只感知「已配置 / 缺失 / 失效」状态、不感知值。凭据失效是 provider 可用性问题,不参与 status 的用量语义。
 _Avoid_: 密钥、令牌、登录态、pi 凭据
+
+**loginItem 登录自启**:
+随用户登录自动启动 App 的产品行为:仅对打包形态的 App 默认开启(裸可执行文件不自动安装),设置窗口「通用」分组提供开关;用户成功拨动过开关即视为表态,默认逻辑此后不再自动改写。「退出用量监视器」只结束本次运行,不改自启状态。
+_Avoid_: 开机启动、后台服务、SMAppService(正式分发时的迁移备选,非当前机制)
