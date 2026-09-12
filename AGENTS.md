@@ -44,6 +44,11 @@ PNG 供人工验收对照 `prototype/*` 分支形态。发布构建不含该入�
 验证 Keychain 失败路径(红横幅 + 失败不清空输入):DEBUG 构建加 `--simulate-keychain-failure` 启动,
 保存任意一家的凭据即可看到错误码 -34018 的红色横幅;读取照常,不动真实钥匙串内容。
 
+验证通知同屏不打扰(C4,#42;通知需 bundle 身份,须打包后运行):`scripts/make-app.sh debug`,
+退出已运行实例后 `open build/用量监视器.app --args --debug-test-notifications 8`——
+每 8 秒发一条测试临界通知(identifier 带序号,通知中心可累积):popover 打开或设置窗口前置时
+无横幅无声音、仅通知中心有记录;两者都不可见时恢复横幅 + 声音。点击通知直达焦点卡(与真实临界同路由)。
+
 ## 真实链路冒烟(DEBUG)
 
 策略逻辑已由 `swift test`(虚拟时钟 + 假件)覆盖;以下入口用**真实适配器 → 三家真实端点 → 解析归一化 → 原子落盘**验证数据链路(仅 DEBUG 构建):

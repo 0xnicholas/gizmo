@@ -71,6 +71,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reason: "用量监视器后台轮询"
         )
 
+        #if DEBUG
+        // C4 手动验收(#42):--debug-test-notifications <秒> 周期发测试临界通知。
+        // 通知需 bundle 身份,须以 make-app.sh 产物运行(裸可执行文件会静默降级)。
+        if let interval = debugTestNotificationInterval {
+            model.startDebugTestNotifications(every: interval)
+        }
+        #endif
+
         model.requestOpenSettings = { [weak self] selection, fromCredentialAlert in
             self?.showSettings(selection: selection, fromCredentialAlert: fromCredentialAlert)
         }
@@ -96,6 +104,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).count <= 1
     }
 
+    #if DEBUG
+    /// 解析 --debug-test-notifications <秒>(C4 验收专用):值非法或缺失视为未开启。
+    private var debugTestNotificationInterval: TimeInterval? {
+        let args = CommandLine.arguments
+        guard let flag = args.firstIndex(of: "--debug-test-notifications"),
+            flag + 1 < args.count,
+            let seconds = TimeInterval(args[flag + 1]), seconds > 0
+        else { return nil }
+        return seconds
+    }
+    #endif
+
     func showSettings(selection: AppModel.SettingsSelection, fromCredentialAlert: Bool) {
         model.settingsSelection = selection
         model.settingsArrivalBanner = fromCredentialAlert
@@ -110,6 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        // 窗口上屏即开始计入可见(C4 抑制信号);对端关闭在 windowWillClose。
+        model.settingsWindowOpened()
     }
 }
 
@@ -153,8 +175,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return false
     }
 
-    /// 窗口真关闭(含确认后关闭):草稿即弃,凭据文本不驻留内存。
+    /// 窗口真关闭(含确认后关闭):草稿即弃,凭据文本不驻留内存;C4 抑制信号同步撤下。
     func windowWillClose(_ notification: Notification) {
+        modelRef?.settingsWindowClosed()
         modelRef?.discardCredentialDrafts()
     }
 

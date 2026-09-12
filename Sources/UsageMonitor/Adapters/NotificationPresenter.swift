@@ -18,11 +18,31 @@ enum NotificationRoute: Equatable, Sendable {
     case credential(Provider)
 }
 
+/// 通知同屏不打扰(C4,#42)的呈现决策(纯逻辑,单测直测;willPresent 消费):
+/// popover 或设置窗口正可见时不横幅、不响(返回空 options,通知仍投递进通知中心),
+/// 不可见时维持横幅 + 声音。消灭「正看着卡片又弹同一条通知」的同屏双通道打扰。
+enum NotificationPresentationDecision {
+    /// 任一呈现面(popover / 设置窗口)可见即抑制。
+    static func isSuppressed(popoverVisible: Bool, settingsVisible: Bool) -> Bool {
+        popoverVisible || settingsVisible
+    }
+
+    /// 抑制 → 空 options(静默投递:仅通知中心,不横幅不响);否则横幅 + 声音。
+    static func options(suppress: Bool) -> UNNotificationPresentationOptions {
+        suppress ? [] : [.banner, .sound]
+    }
+}
+
 @MainActor
 final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
     typealias Route = NotificationRoute
 
     var onOpen: ((Route) -> Void)?
+
+    /// 由 AppModel 注入(与 onOpen 同路):popover 或设置窗口是否可见。
+    /// willPresent 据此静默投递(C4)。若 popover 的 onDisappear 未触发而状态滞留 true,
+    /// 通知退化为持续静默——与 isPopoverVisible 既有注释的「尽力降级」口径一致。
+    var isAnySurfaceVisible: (@MainActor () -> Bool)?
 
     private let isAvailable: Bool
 
@@ -59,6 +79,24 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
         )
     }
 
+    #if DEBUG
+    /// DEBUG 验收入口(C4,#42):发一条可区分的测试临界通知;文案与点击路由复用生产路径
+    /// (UsageAlert.text / notificationIdentifier + 序号后缀,通知中心可累积对照)。
+    /// 仅供 --debug-test-notifications 使用。
+    func debugPostTestCritical(sequence: Int) {
+        let alert = UsageAlert(
+            provider: .glm,
+            basis: .window(label: "7 天窗", remaining: 42, limit: 1000, unit: "积分", percent: 4)
+        )
+        post(
+            identifier: "\(alert.notificationIdentifier)-debug-\(sequence)",
+            title: "用量临界(测试 \(sequence))",
+            body: alert.text,
+            route: .usage(alert.provider)
+        )
+    }
+    #endif
+
     private func post(identifier: String, title: String, body: String, route: Route) {
         guard isAvailable else { return }
         let center = UNUserNotificationCenter.current()
@@ -94,8 +132,17 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        // 菜单栏 App 也可能处于「活跃」,仍要展示横幅。
-        [.banner, .sound]
+        // C4 同屏不打扰:用户正看着 popover / 设置窗口时不横幅不响(仍进通知中心);
+        // 不可见时维持横幅 + 声音(菜单栏 App 也可能处于「活跃」,仍要展示)。
+        // 注:willPresent 只在 app 前台时被调——后台时系统默认横幅本就正确(用户注意力
+        // 在别处),设置窗口留在屏上但 app 已切后台的情形因此不受此闭包控制,属平台边界。
+        NotificationPresentationDecision.options(suppress: await isAnySurfaceVisibleNow())
+    }
+
+    /// 回到主 actor 读取注入的可见性闭包(isAnySurfaceVisible 存储属性隔离在主 actor)。
+    @MainActor
+    private func isAnySurfaceVisibleNow() -> Bool {
+        isAnySurfaceVisible?() ?? false
     }
 
     nonisolated func userNotificationCenter(

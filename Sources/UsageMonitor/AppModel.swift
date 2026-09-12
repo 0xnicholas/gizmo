@@ -38,9 +38,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRefreshing = false
     @Published var bannerDismissed = false
     /// popover 是否可见(通知点击直达时判断要不要展开,避免把已开的关掉)。
-    /// 若系统来路导致 onDisappear 未触发而状态滞留 true,通知点击退化为仅预设焦点——
-    /// 与「尽力展开、失败降级」的设计一致,不影响其余功能。
+    /// 若系统来路导致 onDisappear 未触发而状态滞留 true,通知点击退化为仅预设焦点、
+    /// 临界通知退化为持续静默(C4)——与「尽力展开、失败降级」的设计一致,不影响其余功能。
     @Published private(set) var isPopoverVisible = false
+    /// 设置窗口是否可见(由 AppDelegate 在开/关窗口时回写):与 isPopoverVisible 同为
+    /// 通知同屏不打扰(C4)的抑制信号——两者任一可见,临界/失效通知不横幅不响(仍进通知中心)。
+    @Published private(set) var isSettingsWindowVisible = false
     @Published var settingsSelection: SettingsSelection = .general
     @Published var settingsArrivalBanner = false
     @Published private(set) var credentialNotices: [Provider: CredentialNotice] = [:]
@@ -99,6 +102,13 @@ final class AppModel: ObservableObject {
         presenter.onOpen = { [weak self] route in
             self?.handleNotificationRoute(route)
         }
+        presenter.isAnySurfaceVisible = { [weak self] in
+            guard let self else { return false }
+            return NotificationPresentationDecision.isSuppressed(
+                popoverVisible: self.isPopoverVisible,
+                settingsVisible: self.isSettingsWindowVisible
+            )
+        }
     }
 
     #if DEBUG
@@ -129,6 +139,24 @@ final class AppModel: ObservableObject {
     func injectPreviewIsRefreshing(_ refreshing: Bool) {
         isRefreshing = refreshing
     }
+
+    /// DEBUG 手动验收(C4,#42):--debug-test-notifications <秒> 启动后周期发测试临界通知,
+    /// 供人工核对「popover/设置窗口可见 → 无横幅无声音、仅通知中心;不可见 → 横幅 + 声音」。
+    /// identifier 带序号互不顶掉,通知中心可累积对照。发布构建无此入口。
+    func startDebugTestNotifications(every interval: TimeInterval) {
+        debugNotificationTask?.cancel()
+        debugNotificationTask = Task { [weak self] in
+            var sequence = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard let self else { return }
+                sequence += 1
+                self.presenter.debugPostTestCritical(sequence: sequence)
+            }
+        }
+    }
+
+    private var debugNotificationTask: Task<Void, Never>?
     #endif
 
     // MARK: - 生命周期
@@ -191,6 +219,16 @@ final class AppModel: ObservableObject {
 
     func popoverClosed() {
         isPopoverVisible = false
+    }
+
+    /// 设置窗口可见性由 AppDelegate 回写(showSettings / windowWillClose 两端汇合),
+    /// 供通知同屏不打扰(C4)判定;不影响其余设置状态。
+    func settingsWindowOpened() {
+        isSettingsWindowVisible = true
+    }
+
+    func settingsWindowClosed() {
+        isSettingsWindowVisible = false
     }
 
     private func apply(_ events: [EngineEvent]) async {
