@@ -2,3 +2,5 @@
 .build/
 .swiftpm/
 build/
+# 图标生成器的中间产物(icns 为提交物,iconset 可随时重出)
+scripts/icon/AppIcon.iconset/

@@ -15,10 +15,13 @@ cd "$ROOT"
 
 BIN_DIR="$("$SWIFT" build -c "$CONFIG" --show-bin-path)"
 APP="$ROOT/build/用量监视器.app"
+ICON="$ROOT/scripts/icon/AppIcon.icns"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/UsageMonitor" "$APP/Contents/MacOS/UsageMonitor"
+# 应用图标(#49,原型 A 菜单栏窗格):生成器 scripts/icon/generate.swift 重跑可全套重出。
+cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -45,6 +48,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
 </dict>
 </plist>
 PLIST
