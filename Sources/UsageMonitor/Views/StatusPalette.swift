@@ -38,11 +38,12 @@ struct StatusColorComponents: Equatable {
 /// 对比度仅 1.31/1.81/3.18(审计 #25 实测,基线 (238,238,238)),偏低态余光认不出。
 /// 深色 appearance 维持系统色(对比度 6.56/8.70/3.51 全部合格),不设变体。
 ///
-/// 锚点取审计实测:黄 (190,140,0)≈2.61、红 (206,52,38)≈4.37;绿锚点 (34,128,28)≈4.34
-/// 与红几乎同亮度(0.159 vs 0.157),亮度阶梯「黄 > 红 > 绿」无法严格成立,故再加深一档
-/// 到 (28,112,24)≈5.35——三态亮度 0.297 > 0.157 > 0.119 形成阶梯,红绿色弱下仍可分档。
+/// 锚点取审计实测:黄 (190,140,0)≈2.61、红 (206,52,38)≈4.37。绿在 #51 提亮一档:
+/// 从额外加深档 (28,112,24)≈5.35 回到阶梯内最高档 (30,126,34)≈4.46——亮度压红锚
+/// (L=0.153 < 0.157)保住「黄 > 红 > 绿」阶梯,对比度仍 ≥4.2;色相与深色模式
+/// 系统绿同族(黄绿系)。锚点由 StatusPaletteTests 锁定,防无声漂回。
 enum StatusPalette {
-    static let normal = StatusColorComponents(r8: 28, g8: 112, b8: 24)
+    static let normal = StatusColorComponents(r8: 30, g8: 126, b8: 34)
     static let low = StatusColorComponents(r8: 190, g8: 140, b8: 0)
     static let critical = StatusColorComponents(r8: 206, g8: 52, b8: 38)
 

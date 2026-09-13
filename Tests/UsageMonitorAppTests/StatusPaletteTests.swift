@@ -34,6 +34,16 @@ struct StatusPaletteTests {
         #expect(abs(redAnchor.contrastRatio(against: Self.lightMenuBar) - 4.37) < 0.02)
     }
 
+    /// #51 提亮决议:绿从额外加深档 (28,112,24)≈5.35 回到阶梯内最高档——
+    /// L 压红锚之下保住阶梯,对比度仍 ≥4.2。锚点锁定防无声漂回。
+    @Test("绿锚点锁定:(30,126,34)≈4.46,亮度压红锚之下(#51 提亮决议)")
+    func greenAnchorLocked() {
+        let green = StatusPalette.lightVariant(for: .normal)
+        #expect(green == StatusColorComponents(r8: 30, g8: 126, b8: 34))
+        #expect(abs(green.contrastRatio(against: Self.lightMenuBar) - 4.46) < 0.02)
+        #expect(green.wcagLuminance < StatusPalette.lightVariant(for: .critical).wcagLuminance)
+    }
+
     @Test("纯黑对纯白对比度 = 21(WCAG 口径自检)")
     func extremeContrastIs21() {
         let black = StatusColorComponents(r8: 0, g8: 0, b8: 0)
