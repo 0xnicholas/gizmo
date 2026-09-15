@@ -23,14 +23,13 @@ struct PlanStateTests {
             planValidity: validity,
             fetchedAt: snapshotFetchedAt
         )
-        return PlanState.evaluate(provider: provider, snapshot: snapshot, now: now)
+        return PlanState.evaluate(provider: provider, snapshot: snapshot, manualExpiry: nil, now: now)
     }
 
     @Test("三态推导:区间内 active(带 autoRenew 与观测时刻);无 planValidity → unknown")
     func threeStates() {
         let active = state(now: Self.periodEnd.addingTimeInterval(-86_400))
         #expect(active == .active(
-            source: .provider,
             validUntil: Self.periodEnd,
             autoRenew: false,
             observedAt: Fixture.epoch
@@ -43,7 +42,6 @@ struct PlanStateTests {
     @Test("边界:now == validUntil 当刻即 expired;早一秒 active")
     func expiryBoundary() {
         #expect(state(now: Self.periodEnd) == .expired(
-            source: .provider,
             validUntil: Self.periodEnd,
             observedAt: Fixture.epoch
         ))
@@ -51,7 +49,6 @@ struct PlanStateTests {
         #expect(!state(now: Self.periodEnd.addingTimeInterval(-1)).isExpired)
         #expect(!state(validity: nil, now: Fixture.epoch).isExpired, "unknown 不灰")
         #expect(state(now: Self.periodEnd.addingTimeInterval(-1)) == .active(
-            source: .provider,
             validUntil: Self.periodEnd,
             autoRenew: false,
             observedAt: Fixture.epoch
@@ -60,8 +57,7 @@ struct PlanStateTests {
 
     @Test("expired 不携带 autoRenew(续订事实对已到期的结论无贡献)")
     func expiredOmitsAutoRenew() {
-        if case .expired(let source, let validUntil, let observedAt) = state(now: Self.periodEnd) {
-            #expect(source == .provider)
+        if case .expired(let validUntil, let observedAt) = state(now: Self.periodEnd) {
             #expect(validUntil == Self.periodEnd)
             #expect(observedAt == Fixture.epoch)
         } else {
@@ -75,25 +71,25 @@ struct PlanStateTests {
         #expect(state(provider: .deepseek, now: Fixture.epoch) == .unknown)
     }
 
-    @Test("Kimi 无来源 → unknown(#58 手动标记前不做任何断言)")
+    @Test("Kimi 无来源且无手动声明 → unknown(与手动标记前一致)")
     func kimiWithoutSourceIsUnknown() {
         #expect(state(provider: .kimi, validity: nil, now: Fixture.epoch) == .unknown)
     }
 
     @Test("无快照(从未成功)→ unknown")
     func missingSnapshotIsUnknown() {
-        #expect(PlanState.evaluate(provider: .glm, snapshot: nil, now: Fixture.epoch) == .unknown)
+        #expect(PlanState.evaluate(provider: .glm, snapshot: nil, manualExpiry: nil, now: Fixture.epoch) == .unknown)
     }
 
     @Test("观测时刻:优先取有效期自身的 observedAt;缺失时回退快照 fetchedAt(旧缓存兼容)")
     func observedAtFallback() {
         // 有效期自带观测时刻(跨订阅分片失败保留时不动)→ 用它
         let own = state(observedAt: Fixture.epoch.addingTimeInterval(-3_600), now: Self.periodEnd)
-        #expect(own == .expired(source: .provider, validUntil: Self.periodEnd, observedAt: Fixture.epoch.addingTimeInterval(-3_600)))
+        #expect(own == .expired(validUntil: Self.periodEnd, observedAt: Fixture.epoch.addingTimeInterval(-3_600)))
 
         // 旧缓存文件(#54 前)没有 observedAt → 回退快照 fetchedAt
         let legacy = state(snapshotFetchedAt: Fixture.epoch.addingTimeInterval(-120), now: Self.periodEnd)
-        #expect(legacy == .expired(source: .provider, validUntil: Self.periodEnd, observedAt: Fixture.epoch.addingTimeInterval(-120)))
+        #expect(legacy == .expired(validUntil: Self.periodEnd, observedAt: Fixture.epoch.addingTimeInterval(-120)))
     }
 
     @Test("阈值默认:提前提醒 3 天;到期结论陈旧阈值 = 2× 默认轮询周期(60 分钟)")

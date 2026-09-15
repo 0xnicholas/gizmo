@@ -18,9 +18,11 @@ enum PreviewData {
         credential: CredentialState = .configured,
         status: ProviderStatus? = nil,
         loadFailed: Bool = false,
-        consecutiveFailures: Int = 0
+        consecutiveFailures: Int = 0,
+        manualExpiry: ManualPlanExpiry? = nil
     ) -> ProviderRuntimeState {
         var runtime = ProviderRuntimeState(provider: provider)
+        runtime.manualPlanExpiry = manualExpiry
         runtime.snapshot = snapshot
         runtime.credential = credential
         // 样例状态也走真实推导,避免预览与引擎行为不一致
@@ -298,20 +300,48 @@ enum PreviewData {
         )
     }
 
-    /// 可自然达到的「全到期」形态:GLM+Kimi 到期、DeepSeek 未配置——可计入的窗口家
-    /// 全部退出后,图标回灰「—」、总览条标题换「套餐均已到期」(不到「三家」,
-    /// DeepSeek 无套餐且未配置)。#58 手动标记落地后用户真实会遇到的形态。
+    /// 可自然达到的「全到期」形态(#58 后):GLM 自动到期 + Kimi 手动标记到期 +
+    /// DeepSeek 未配置——可计入的窗口家全部退出后,图标回灰「—」、总览条标题换
+    /// 「套餐均已到期」(不到「三家」,DeepSeek 无套餐且未配置)。
     static func glmKimiExpiredDeepSeekMissingState() -> EngineState {
-        let expired = validity(untilDays: -2, fromDays: -32)
         var providers: [Provider: ProviderRuntimeState] = [:]
-        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: 3_000, validity: expired))
-        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 5, validity: expired))
+        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: 3_000, validity: validity(untilDays: -2, fromDays: -32)))
+        // Kimi 没有有效期来源:它的到期形态只能来自手动标记(#58)。
+        providers[.kimi] = runtime(
+            .kimi,
+            snapshot: kimi(weekRemaining: 5),
+            manualExpiry: ManualPlanExpiry(markedAt: Date().addingTimeInterval(-86_400))
+        )
         providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
         return EngineState(
             providers: providers,
             lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
             overview: GlobalOverview.compute(
-                snapshots: providers.compactMapValues(\.snapshot),
+                providers: providers,
+                evaluator: StatusEvaluator(),
+                now: Date()
+            )
+        )
+    }
+
+    /// Kimi 手动标记到期(#58,可自然达到的形态):卡上灰「已到期」+「手动标记于 MM-dd」+
+    /// 「已续订?恢复显示」按钮;窗口数值保留但灰化,余额/钱包不跟着灰;
+    /// 退出全局结论(最紧轮到 GLM)。OCR 必见:已到期 / 手动标记于 / 已续订。
+    static func kimiManuallyMarkedState() -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: 3_000))
+        providers[.kimi] = runtime(
+            .kimi,
+            snapshot: kimi(weekRemaining: 66),
+            manualExpiry: ManualPlanExpiry(markedAt: Date().addingTimeInterval(-86_400))
+        )
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek())
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
+            lastRefreshFinishedAt: Date().addingTimeInterval(-freshAge),
+            overview: GlobalOverview.compute(
+                providers: providers,
                 evaluator: StatusEvaluator(),
                 now: Date()
             )
@@ -319,8 +349,8 @@ enum PreviewData {
     }
 
     /// 三家全到期(#56):图标回灰「—」、a11y/tooltip 讲清「三家套餐均已到期」的
-    /// 验收形态。构造态:DeepSeek 现实恒 unknown(余额型家不做到期断言),此态在
-    /// #58 手动标记落地前不可自然达到——口径与渲染先行,planStates 直接注入。
+    /// 验收形态。构造态:手动标记入口只给 Kimi(#58 决议),DeepSeek 恒 unknown
+    /// (余额型家不做到期断言)——此态仍不可自然达到,口径与渲染先行,planStates 直接注入。
     static func allPlansExpiredState() -> EngineState {
         let expired = validity(untilDays: -2, fromDays: -32)
         var providers: [Provider: ProviderRuntimeState] = [:]
@@ -328,7 +358,7 @@ enum PreviewData {
         providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 5, validity: expired))
         providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "62.47"))
         let expiredState: (Provider) -> PlanState = { provider in
-            .expired(source: .provider, validUntil: expired.validUntil, observedAt: Date())
+            .expired(validUntil: expired.validUntil, observedAt: Date())
         }
         return EngineState(
             providers: providers,

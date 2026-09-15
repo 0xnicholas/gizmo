@@ -26,6 +26,9 @@ public struct ProviderRuntimeState: Equatable, Sendable {
     public var loadFailed: Bool
     /// 脱敏后的最近一次失败描述(不含响应体与凭据)。
     public var failureDescriptor: String?
+    /// 用户手动标记的到期声明(#58):nil = 未标记。用户表态,不是 provider 事实;
+    /// provider 侧能判时永不覆盖(判定顺序见 `PlanState.evaluate`)。
+    public var manualPlanExpiry: ManualPlanExpiry?
 
     public init(provider: Provider) {
         self.provider = provider
@@ -37,6 +40,7 @@ public struct ProviderRuntimeState: Equatable, Sendable {
         self.consecutiveFailures = 0
         self.loadFailed = false
         self.failureDescriptor = nil
+        self.manualPlanExpiry = nil
     }
 
     /// 该家是否有可展示的数据。

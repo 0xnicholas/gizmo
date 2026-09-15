@@ -249,7 +249,8 @@ struct EngineHarness {
         payloads: [Provider: ProviderPayload] = [:],
         activeProviders: Set<Provider>? = nil,
         clock: TestClock = TestClock(),
-        silenceKeys: any PlanExpirySilenceKeyStore = InMemoryPlanExpirySilenceKeyStore()
+        silenceKeys: any PlanExpirySilenceKeyStore = InMemoryPlanExpirySilenceKeyStore(),
+        manualExpiry: [Provider: ManualPlanExpiry] = [:]
     ) {
         let clock = clock
         let credentials = FakeCredentialStore(values: credentialValues)
@@ -283,6 +284,7 @@ struct EngineHarness {
             cache: cache,
             clock: clock,
             silenceKeys: silenceKeys,
+            manualExpiry: manualExpiry,
             thresholds: thresholds
         )
     }

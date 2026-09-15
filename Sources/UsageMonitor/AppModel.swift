@@ -66,6 +66,8 @@ final class AppModel: ObservableObject {
     private let loginItem: any LoginItemControlling
     private let presenter = NotificationPresenter()
     private let defaults: UserDefaults
+    /// 手动到期声明的存储(#58):与「登录自启已表态」同类,重启后仍在。
+    private let manualPlanExpiryStore: UserDefaultsManualPlanExpiryStore
     private var pollTask: Task<Void, Never>?
 
     init(
@@ -78,6 +80,8 @@ final class AppModel: ObservableObject {
         self.credentials = credentials
         self.loginItem = loginItem
         self.loginItemEnabled = loginItem.isEnabled
+        let manualPlanExpiryStore = UserDefaultsManualPlanExpiryStore(defaults: defaults)
+        self.manualPlanExpiryStore = manualPlanExpiryStore
         let clock = SystemClock()
         self.state = EngineState(providers: Dictionary(
             uniqueKeysWithValues: Provider.allCases.map { ($0, ProviderRuntimeState(provider: $0)) }
@@ -97,6 +101,8 @@ final class AppModel: ObservableObject {
             cache: FileSnapshotCache(),
             clock: clock,
             silenceKeys: UserDefaultsPlanExpirySilenceKeyStore(defaults: defaults),
+            // 重启后仍在的手动声明:落盘读回,构造即注入。
+            manualExpiry: manualPlanExpiryStore.all(),
             thresholds: thresholds
         )
 
@@ -331,6 +337,23 @@ final class AppModel: ObservableObject {
         #endif
         Task { @MainActor in
             notificationAuthorization = await presenter.authorizationStatus()
+        }
+    }
+
+    // MARK: - 手动标记到期(#58)
+
+    /// 一键标记「已到期」/「已续订?恢复显示」:先落盘(用户表态,重启后仍在),
+    /// 再注入引擎让全局口径与卡态立即重算。自己按的按钮不发任何通知。
+    /// 入口只对提供手动标记的家开放(`Provider.supportsManualPlanExpiry`)。
+    func setManualPlanExpiry(marked: Bool, for provider: Provider) {
+        guard provider.supportsManualPlanExpiry else { return }
+        let declaration = marked
+            ? ManualPlanExpiryEditing.mark(at: Date())
+            : ManualPlanExpiryEditing.clear()
+        manualPlanExpiryStore.save(declaration, for: provider)
+        Task {
+            await engine.setManualPlanExpiry(declaration, for: provider)
+            state = await engine.state
         }
     }
 

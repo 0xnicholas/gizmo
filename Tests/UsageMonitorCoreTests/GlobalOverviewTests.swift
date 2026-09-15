@@ -92,7 +92,7 @@ struct GlobalOverviewExpiryTests {
     let evaluator = StatusEvaluator()
 
     private func expiredPlan(validUntil: Date = Fixture.epoch) -> PlanState {
-        .expired(source: .provider, validUntil: validUntil, observedAt: Fixture.epoch)
+        .expired(validUntil: validUntil, observedAt: Fixture.epoch)
     }
 
     @Test("到期家退出最紧/最差/图标数字;未到期家照常参与")

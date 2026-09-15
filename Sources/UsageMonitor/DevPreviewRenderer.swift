@@ -109,11 +109,24 @@ enum DevPreviewRenderer {
         write(PopoverView(model: seeded(PreviewData.allPlansExpiredState())).frame(width: 360), name: "popover-all-plans-expired.png", into: directory)
         menubarIcon(PreviewData.allPlansExpiredState(), name: "menubar-icon-all-plans-expired.png", into: directory)
 
-        // 可自然达到的全到期形态(#58 后):GLM+Kimi 到期、DeepSeek 未配置——标题
-        // 「套餐均已到期」(不到「三家」)、图标灰「—」、a11y 只报「已到期:两家」。
+        // 可自然达到的全到期形态(#58 后):GLM 自动到期 + Kimi 手动标记到期、DeepSeek 未配置
+        // ——标题「套餐均已到期」(不到「三家」)、图标灰「—」、a11y 只报「已到期:两家」。
         // OCR 必见:套餐均已到期 / 已到期:。
         write(PopoverView(model: seeded(PreviewData.glmKimiExpiredDeepSeekMissingState())).frame(width: 360), name: "popover-glm-kimi-expired.png", into: directory)
         menubarIcon(PreviewData.glmKimiExpiredDeepSeekMissingState(), name: "menubar-icon-glm-kimi-expired.png", into: directory)
+
+        // 手动标记到期(#58,可自然达到):Kimi 卡灰「已到期」+「手动标记于 MM-dd」+
+        // 「已续订?恢复显示」按钮,退出全局结论(最紧轮到 GLM);设置窗口 Kimi 页
+        // 同一控件(「套餐状态」段)。OCR 必见:已到期 / 手动标记于 / 已续订。
+        // 未标记形态在 popover-kimi.png(该卡现在带「标记为已到期」按钮)。
+        let manuallyMarked = seeded(PreviewData.kimiManuallyMarkedState())
+        manuallyMarked.focusProvider = .kimi
+        write(PopoverView(model: manuallyMarked).frame(width: 360), name: "popover-kimi-manually-marked.png", into: directory)
+        write(
+            SettingsWindowView(model: seeded(PreviewData.kimiManuallyMarkedState(), selection: .provider(.kimi))),
+            name: "settings-kimi-manual-marked.png",
+            into: directory
+        )
 
         print("已渲染到:\(directory.path)")
     }

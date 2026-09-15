@@ -45,6 +45,7 @@ public actor UsageEngine {
         cache: SnapshotCache,
         clock: Clock,
         silenceKeys: any PlanExpirySilenceKeyStore,
+        manualExpiry: [Provider: ManualPlanExpiry],
         thresholds: Thresholds = Thresholds()
     ) {
         self.credentials = credentials
@@ -58,6 +59,11 @@ public actor UsageEngine {
         self.providers = Dictionary(uniqueKeysWithValues: Provider.allCases.map { ($0, ProviderRuntimeState(provider: $0)) })
         self.alerts = Dictionary(uniqueKeysWithValues: Provider.allCases.map { ($0, AlertState()) })
         self.planExpirySilenceKeys = silenceKeys.load()
+        // 重启后仍在的手动声明(#58):存储由 App 侧读盘,引擎构造时一并注入,
+        // 首个 state 就带它们(启动即灰、即退出口径,不用等一次刷新)。
+        for (provider, declaration) in manualExpiry {
+            self.providers[provider]?.manualPlanExpiry = declaration
+        }
     }
 
     // MARK: - 只读状态
@@ -70,7 +76,7 @@ public actor UsageEngine {
             isRefreshing: isRefreshing,
             credentialReadFailures: credentialReadFailures,
             overview: GlobalOverview.compute(
-                snapshots: providers.compactMapValues(\.snapshot),
+                providers: providers,
                 evaluator: evaluator,
                 now: clock.now
             )
@@ -331,9 +337,11 @@ public actor UsageEngine {
         }
 
         // 到期家不发「已达临界」(#56):对一条不能用的额度报临界是纯噪音。
-        // 边沿照常消费(记 usageCritical)——续订翻回后停留临界不重发,与「跨入才
-        // 通知」的既有语义一致;恢复路径(临界→非临界)不受影响,照常复位。
-        if PlanState.evaluate(provider: provider, snapshot: snapshot, now: clock.now).isExpired {
+        // #58 的手动到期同属「不能用」——同一个判定入口,两处不各写一份。
+        // 边沿照常消费(记 usageCritical)——续订/取消标记后停留临界不重发,与
+        // 「跨入才通知」的既有语义一致;恢复路径(临界→非临界)不受影响,照常复位。
+        let runtime = providers[provider] ?? ProviderRuntimeState(provider: provider)
+        if PlanState.evaluate(runtime: runtime, now: clock.now).isExpired {
             alert.usageCritical = true
             alerts[provider] = alert
             return []
@@ -404,12 +412,15 @@ public actor UsageEngine {
         // 有效期是 autoRenew 的唯一事实来源(PlanState.active 也带它,但 expired 不带
         // ——两处取同一个快照字段,不分叉)。
         let validity = providers[provider]?.snapshot?.planValidity
+        let runtime = providers[provider] ?? ProviderRuntimeState(provider: provider)
 
-        switch PlanState.evaluate(provider: provider, snapshot: providers[provider]?.snapshot, now: now) {
-        case .unknown:
+        switch PlanState.evaluate(runtime: runtime, now: now) {
+        case .unknown, .manuallyExpired:
+            // 手动标记是用户自己的动作(#58):不冒充 provider 事实发「即将到期/已到期」
+            // 提醒——用户刚按过按钮,不需要被告知自己做了什么。
             return []
 
-        case .expired(_, let validUntil, _):
+        case .expired(let validUntil, _):
             var keys = planExpirySilenceKeys[provider] ?? PlanExpirySilenceKeys()
             guard keys.expired != validUntil else { return [] }
             keys.expired = validUntil
@@ -421,7 +432,7 @@ public actor UsageEngine {
                 kind: .expired
             ))]
 
-        case .active(_, let validUntil, _, _):
+        case .active(let validUntil, _, _):
             var keys = planExpirySilenceKeys[provider] ?? PlanExpirySilenceKeys()
             var events: [EngineEvent] = []
 
@@ -461,6 +472,17 @@ public actor UsageEngine {
     private func installSilenceKeys(_ keys: PlanExpirySilenceKeys, for provider: Provider) {
         planExpirySilenceKeys[provider] = keys
         silenceKeyStore.save(planExpirySilenceKeys)
+    }
+
+    // MARK: - 手动到期声明(#58)
+
+    /// 用户手动标记/取消到期声明(Kimi 这类 App 无从得知有效期的家)。
+    /// 与「凭据已清除」同型的注入口:不进快照、不落缓存、**不发任何通知**——
+    /// 自己按的按钮不需要被通知;只改运行态,让全局口径与呈现在下次读 state 时重新求值。
+    public func setManualPlanExpiry(_ declaration: ManualPlanExpiry?, for provider: Provider) {
+        guard var state = providers[provider] else { return }
+        state.manualPlanExpiry = declaration
+        providers[provider] = state
     }
 
     // MARK: - 工具

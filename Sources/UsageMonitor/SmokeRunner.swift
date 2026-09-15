@@ -347,8 +347,9 @@ enum SmokeRunner {
             parsers: [ .deepseek: DeepSeekParser(), .kimi: KimiParser(), .glm: GLMParser() ],
             cache: FileSnapshotCache(),
             clock: clock,
-            // 冒烟不落静默键:真实用户的上次提醒记录不被一次冒烟运行改写。
-            silenceKeys: InMemoryPlanExpirySilenceKeyStore()
+            // 冒烟不落静默键、不注入手动声明:真实用户的上次提醒记录与声明不被一次冒烟运行改写。
+            silenceKeys: InMemoryPlanExpirySilenceKeyStore(),
+            manualExpiry: [:]
         )
     }
 

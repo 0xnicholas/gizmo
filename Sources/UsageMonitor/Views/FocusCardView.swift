@@ -12,14 +12,20 @@ struct FocusCardView: View {
         // 一次渲染只取一次 now(#54):planState 是时间性求值,头部/归属/有效期行
         // 共用同一时刻,不在同一次 body 里跨过到期边界。
         let now = Date()
-        let plan = PlanState.evaluate(provider: provider, snapshot: runtime.snapshot, now: now)
+        let plan = PlanState.evaluate(runtime: runtime, now: now)
         // 到期形态的成立:凭据问题优先于到期——失效家回到既有凭据占位,不做到期断言。
         let expired = runtime.credential == .configured && plan.isExpired
+        // 手动态(#58):用户声明没有 provider 有效期,归属时刻 = 标记时刻(不同于陈旧归属)。
+        let manuallyMarkedAt: Date? = {
+            if case .manuallyExpired(let markedAt) = plan { return markedAt }
+            return nil
+        }()
 
         return VStack(alignment: .leading, spacing: 10) {
             header(expired: expired)
             // 到期结论的陈旧归属(#54):订阅数据过旧时,「已到期」说清断言从哪一刻的数据来。
-            if expired, case .expired(_, _, let observedAt) = plan,
+            // 手动态不走这条(用户的标记没有「陈旧」一说),归属在数据区里标「手动标记于」。
+            if expired, case .expired(_, let observedAt) = plan,
                let attribution = Presentation.staleValidityAttribution(
                    observedAt: observedAt,
                    now: now,
@@ -34,7 +40,7 @@ struct FocusCardView: View {
                 if runtime.loadFailed {
                     loadFailureArea(expired: expired)
                 }
-                dataContent(snapshot, expired: expired, now: now)
+                dataContent(snapshot, expired: expired, manuallyMarkedAt: manuallyMarkedAt, now: now)
             } else if runtime.credential == .invalid {
                 CredentialPlaceholder(
                     title: "凭据失效",
@@ -62,7 +68,7 @@ struct FocusCardView: View {
                     .frame(maxWidth: .infinity, minHeight: 60)
             }
 
-            actions
+            actions(manuallyMarkedAt: manuallyMarkedAt)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.05)))
@@ -118,7 +124,15 @@ struct FocusCardView: View {
     // MARK: - 数据内容
 
     @ViewBuilder
-    private func dataContent(_ snapshot: Snapshot, expired: Bool, now: Date) -> some View {
+    private func dataContent(_ snapshot: Snapshot, expired: Bool, manuallyMarkedAt: Date?, now: Date) -> some View {
+        // 手动标记的归属(#58):「手动标记于 MM-dd」放在数据区头部——Kimi 没有
+        // 「有效期至」行,这里就是它的来历说明,不冒充官方事实。
+        if let manuallyMarkedAt {
+            Text(Presentation.manualExpiryAttribution(manuallyMarkedAt))
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+        }
+
         // 主区:「额度窗口」——只放 plan 窗(频限窗移入下方次级区,P2-6)。
         // 到期(#54):窗口行换灰化形态——数值保留但灰化,百分比/进度条/重置行全撤,
         // 死数据不冒充活结论;余额/钱包与「近 7 天消耗」不跟着灰(仍是可用/已发生的事实)。
@@ -273,11 +287,24 @@ struct FocusCardView: View {
 
     // MARK: - 动作区
 
-    private var actions: some View {
+    private func actions(manuallyMarkedAt: Date?) -> some View {
         HStack(spacing: 8) {
             if model.refreshingProvider == provider {
                 ProgressView()
                     .controlSize(.small)
+            }
+            // 手动标记到期(#58):只给 App 无从得知有效期的家(Kimi),标记与还原同一位。
+            // 门控与「已到期」形态一致(凭据正常 + 持快照):按钮能看到自己造成的形态变化,
+            // 不产生「点了没反应」的隐形状态;凭据坏时的维护入口在设置窗口。
+            if showsManualPlanExpiryControl {
+                Button(Presentation.manualExpiryActionTitle(marked: manuallyMarkedAt != nil)) {
+                    model.setManualPlanExpiry(marked: manuallyMarkedAt == nil, for: provider)
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 11.5))
+                .help(manuallyMarkedAt == nil
+                    ? "App 无法自动得知该家的有效期;标记后按「已到期」呈现(数值保留但灰化、退出全局结论)"
+                    : "续订后恢复显示:解除到期形态,按当前数据重新参与结论")
             }
             Spacer()
             // 卡级「刷新」已移除(P2-8,I):与头部全量刷新同名同图不同义;
@@ -291,6 +318,12 @@ struct FocusCardView: View {
             .help("在浏览器打开官方用量页")
         }
     }
+    /// 手动标记入口的成立条件(#58):有手动入口的家 + 凭据正常 + 持快照
+    /// (与「已到期」形态同一个门控——标记能立刻在卡上看到自己的结果)。
+    private var showsManualPlanExpiryControl: Bool {
+        provider.supportsManualPlanExpiry && runtime.credential == .configured && runtime.hasSnapshot
+    }
+
 }
 
 // MARK: - 行与占位

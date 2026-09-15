@@ -65,8 +65,8 @@ enum Presentation {
     }
 
     /// 三家全到期(#56):图标回灰「—」时「—」不能再产生「是不是没联网」的歧义——
-    /// a11y 与 tooltip 讲清「三家套餐均已到期」。现实里 DeepSeek 恒 unknown,
-    /// 此态在 #58 手动标记落地前不可自然达到(预览/测试可注入 planStates 构造)。
+    /// a11y 与 tooltip 讲清「三家套餐均已到期」。手动标记入口只给 Kimi(#58)、
+    /// DeepSeek 恒 unknown:此态仍不可自然达到(预览/测试可注入 planStates 构造)。
     static func isAllPlansExpired(in state: EngineState) -> Bool {
         namedExpiredProviders(in: state).count == Provider.allCases.count
     }
@@ -133,6 +133,18 @@ enum Presentation {
     /// 到期档文案:卡头状态位与 tab 速览共用同一常量,两处不打架。
     static let planExpiredLabel = "已到期"
 
+    /// 手动标记的归属(#58):「手动标记于 MM-dd」。系统时区、到日——这是「你何时标的」,
+    /// 不是 provider 的有效期钟(后者按北京时间,见 `validityDate`);与 `observedAt`
+    /// 归属同一取向。
+    static func manualExpiryAttribution(_ markedAt: Date) -> String {
+        "手动标记于 " + markedFormatter.string(from: markedAt)
+    }
+
+    /// 手动标记控件的两态标题(#58):卡上 actions 行与设置窗口同款,文案只此一份。
+    static func manualExpiryActionTitle(marked: Bool) -> String {
+        marked ? "已续订?恢复显示" : "标记为已到期"
+    }
+
     /// 「(剩 N 天)」:有效期剩余 ≤ 提醒天数时补在「有效期至」行末。已到期或剩余超窗
     /// → nil——后缀只服务「即将到期」的**文本**,没有界面态,不引入第四种状态色。
     /// 窗判定与天数口径都取自 Core(`PlanExpiryNotice.isApproaching` / `remainingDays`):
@@ -195,6 +207,15 @@ enum Presentation {
         formatter.locale = Locale(identifier: "zh_Hans_CN")
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = PlanValidity.timeZone
+        formatter.dateFormat = "MM-dd"
+        return formatter
+    }()
+
+    /// 手动标记日期的归属专用(#58):系统时区(「你何时标的」随本机钟),只到日。
+    private static let markedFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "MM-dd"
         return formatter
     }()
@@ -329,8 +350,8 @@ struct TabPercentPresentation {
 
     init(runtime: ProviderRuntimeState, now: Date = Date()) {
         // 到期(#54):凭据问题优先于到期——失效家不做到期断言;到期家速览位换
-        // 「已到期」灰显,不给已失效的百分比留位置。
-        let plan = PlanState.evaluate(provider: runtime.provider, snapshot: runtime.snapshot, now: now)
+        // 「已到期」灰显,不给已失效的百分比留位置。手动态(#58)同属到期,同一入口。
+        let plan = PlanState.evaluate(runtime: runtime, now: now)
         if runtime.credential == .configured, plan.isExpired {
             text = Presentation.planExpiredLabel
             colorStatus = nil

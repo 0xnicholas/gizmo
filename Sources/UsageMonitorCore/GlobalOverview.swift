@@ -62,7 +62,8 @@ public struct GlobalOverview: Equatable, Sendable {
         tightest.map { Percent.display($0.fraction) }
     }
 
-    /// 生产入口:快照 + now 现场求值 planState(与卡/tab 同一判定函数)。
+    /// 便捷入口:快照 + now 现场求值 planState(与卡/tab 同一判定函数),**无手动声明**
+    /// ——#58 的手动声明在运行态里,走 `compute(providers:evaluator:now:)`(引擎/预览)。
     /// DeepSeek 恒 unknown(余额型家不做到期断言),不会经此入口被剔除。
     public static func compute(
         snapshots: [Provider: Snapshot],
@@ -73,7 +74,23 @@ public struct GlobalOverview: Equatable, Sendable {
             snapshots: snapshots,
             evaluator: evaluator,
             planStates: Dictionary(uniqueKeysWithValues: Provider.allCases.map {
-                ($0, PlanState.evaluate(provider: $0, snapshot: snapshots[$0], now: now))
+                ($0, PlanState.evaluate(provider: $0, snapshot: snapshots[$0], manualExpiry: nil, now: now))
+            })
+        )
+    }
+
+    /// 运行时态入口(#58,引擎与预览共用):planState 从各家运行态求值——手动声明就在
+    /// 运行态里,与卡/tab 走同一个 `PlanState.evaluate(runtime:now:)`,口径不分叉。
+    public static func compute(
+        providers: [Provider: ProviderRuntimeState],
+        evaluator: StatusEvaluator,
+        now: Date
+    ) -> GlobalOverview {
+        compute(
+            snapshots: providers.compactMapValues(\.snapshot),
+            evaluator: evaluator,
+            planStates: Dictionary(uniqueKeysWithValues: Provider.allCases.map {
+                ($0, PlanState.evaluate(runtime: providers[$0] ?? ProviderRuntimeState(provider: $0), now: now))
             })
         )
     }

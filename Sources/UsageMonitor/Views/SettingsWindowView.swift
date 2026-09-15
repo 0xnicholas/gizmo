@@ -182,6 +182,10 @@ struct SettingsWindowView: View {
             }
 
             Divider()
+            if provider.supportsManualPlanExpiry {
+                manualPlanExpirySection(provider)
+                Divider()
+            }
             Text("凭据与 pi 无关,仅存本机钥匙串:值只在进程内使用,不落日志、不进快照。")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
@@ -192,6 +196,31 @@ struct SettingsWindowView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 套餐状态(#58):App 无从得知有效期的家(Kimi)的手动声明入口——与卡上同款控件
+    /// (标记 / 已续订?恢复显示),另标当前是「手动标记于 MM-dd」还是「未标记」。
+    /// 此处不对凭据/快照设门控(凭据坏时卡上按钮隐藏,这里就是维护入口)。
+    private func manualPlanExpirySection(_ provider: Provider) -> some View {
+        let declaration = model.state.provider(provider).manualPlanExpiry
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("套餐状态")
+                .font(.system(size: 12, weight: .semibold))
+            HStack(spacing: 8) {
+                Text(declaration.map { Presentation.manualExpiryAttribution($0.markedAt) } ?? "未标记")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(Presentation.manualExpiryActionTitle(marked: declaration != nil)) {
+                    model.setManualPlanExpiry(marked: declaration == nil, for: provider)
+                }
+                .controlSize(.small)
+                .help("App 无法自动得知该家的有效期;标记后按「已到期」呈现,重启后仍生效")
+            }
+            Text("App 无法自动得知该家的有效期:手动标记后按「已到期」呈现(数值保留但灰化、退出全局结论),重启后仍生效。")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func field(for provider: Provider) -> some View {
