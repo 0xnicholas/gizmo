@@ -9,14 +9,32 @@ struct FocusCardView: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
+        // 一次渲染只取一次 now(#54):planState 是时间性求值,头部/归属/有效期行
+        // 共用同一时刻,不在同一次 body 里跨过到期边界。
+        let now = Date()
+        let plan = PlanState.evaluate(provider: provider, snapshot: runtime.snapshot, now: now)
+        // 到期形态的成立:凭据问题优先于到期——失效家回到既有凭据占位,不做到期断言。
+        let expired = runtime.credential == .configured && plan.isExpired
+
+        return VStack(alignment: .leading, spacing: 10) {
+            header(expired: expired)
+            // 到期结论的陈旧归属(#54):订阅数据过旧时,「已到期」说清断言从哪一刻的数据来。
+            if expired, case .expired(_, _, let observedAt) = plan,
+               let attribution = Presentation.staleValidityAttribution(
+                   observedAt: observedAt,
+                   now: now,
+                   threshold: Thresholds().expiryStalenessThreshold
+               ) {
+                Text(attribution)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
 
             if let snapshot = runtime.snapshot, runtime.credential == .configured {
                 if runtime.loadFailed {
-                    failureStrip
+                    loadFailureArea(expired: expired)
                 }
-                dataContent(snapshot)
+                dataContent(snapshot, expired: expired, now: now)
             } else if runtime.credential == .invalid {
                 CredentialPlaceholder(
                     title: "凭据失效",
@@ -52,10 +70,10 @@ struct FocusCardView: View {
 
     // MARK: - 头部
 
-    private var header: some View {
+    private func header(expired: Bool) -> some View {
         HStack(spacing: 7) {
             Circle()
-                .fill(Presentation.color(for: statusForHeader, scheme: scheme))
+                .fill(Presentation.color(for: statusForHeader(expired: expired), scheme: scheme))
                 .frame(width: 8, height: 8)
             Text(provider.displayName)
                 .font(.system(size: 13.5, weight: .semibold))
@@ -65,14 +83,15 @@ struct FocusCardView: View {
             }
             Spacer()
             if runtime.hasSnapshot, runtime.credential == .configured {
-                Text(Presentation.label(for: runtime.status))
+                // 到期(#54):头部状态位换灰「已到期」——到期是「还适不适用」,不与健康档同台。
+                Text(expired ? Presentation.planExpiredLabel : Presentation.label(for: runtime.status))
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
             }
         }
     }
-    private var statusForHeader: ProviderStatus? {
-        guard runtime.hasSnapshot, runtime.credential == .configured else { return nil }
+    private func statusForHeader(expired: Bool) -> ProviderStatus? {
+        guard runtime.hasSnapshot, runtime.credential == .configured, !expired else { return nil }
         return runtime.status
     }
 
@@ -99,16 +118,18 @@ struct FocusCardView: View {
     // MARK: - 数据内容
 
     @ViewBuilder
-    private func dataContent(_ snapshot: Snapshot) -> some View {
+    private func dataContent(_ snapshot: Snapshot, expired: Bool, now: Date) -> some View {
         // 主区:「额度窗口」——只放 plan 窗(频限窗移入下方次级区,P2-6)。
+        // 到期(#54):窗口行换灰化形态——数值保留但灰化,百分比/进度条/重置行全撤,
+        // 死数据不冒充活结论;余额/钱包与「近 7 天消耗」不跟着灰(仍是可用/已发生的事实)。
         ForEach(Array(snapshot.planWindows.enumerated()), id: \.offset) { _, window in
-            QuotaWindowRow(window: window, fromFailedSnapshot: runtime.loadFailed)
+            QuotaWindowRow(window: window, fromFailedSnapshot: runtime.loadFailed, expired: expired)
         }
 
         // 套餐有效期(#53):只在拿到订阅记录时出现;分片失败 / 无订阅记录时该行干脆不出现,
-        // 其它字段与今天完全一致(静默退化)。
+        // 其它字段与今天完全一致(静默退化)。到期后灰化保留末端日期(#54)。
         if let validity = snapshot.planValidity {
-            InfoRow(label: "有效期至", value: Presentation.validityDate(validity.validUntil))
+            InfoRow(label: "有效期至", value: validityText(validity, expired: expired, now: now), valueIsMuted: expired)
         }
 
         if provider == .deepseek {
@@ -177,6 +198,52 @@ struct FocusCardView: View {
         }
     }
 
+    /// 有效期行的值:MM-dd(北京时间);未到期且剩 ≤ 提醒天数时补「(剩 N 天)」
+    /// (临界期不用自己算日期);到期后不加后缀(到期态由灰化形态自己说话)。
+    private func validityText(_ validity: PlanValidity, expired: Bool, now: Date) -> String {
+        var text = Presentation.validityDate(validity.validUntil)
+        if !expired,
+           let suffix = Presentation.expiringSoonSuffix(
+               validUntil: validity.validUntil,
+               now: Date(),
+               reminderDays: Thresholds().expiryReminderDays
+           ) {
+            text += suffix
+        }
+        return text
+    }
+
+    /// 额度失败区的分档(#54):未到期 → 既有橙色「加载失败」条;到期 → 「已到期」优先,
+    /// 灰条只说「额度未能刷新(最后成功 HH:mm)」——排定的到期不被误诊成网络问题。
+    @ViewBuilder
+    private func loadFailureArea(expired: Bool) -> some View {
+        if expired {
+            expiredQuotaStrip
+        } else {
+            failureStrip
+        }
+    }
+
+    private var expiredQuotaStrip: some View {
+        HStack(spacing: 6) {
+            Text(expiredQuotaStripText)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("重试") { model.refresh(provider) }
+                .controlSize(.small)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+    }
+
+    private var expiredQuotaStripText: String {
+        if let at = runtime.lastSuccessAt {
+            return "额度未能刷新(最后成功 \(Presentation.time(at)))"
+        }
+        return "额度未能刷新,稍后自动重试"
+    }
+
     private var failureStrip: some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -233,6 +300,9 @@ struct QuotaWindowRow: View {
     /// 该行数据是否来自「加载失败」期间仍持有的旧快照:已过期的重置时间需降灰标注,
     /// 不误导为有效倒计时。(与图标的「陈旧」概念不同:那个看 2× 轮询间隔,不看失败态。)
     var fromFailedSnapshot = false
+    /// 到期形态(#54):数值保留但灰化(次要色、去强调字重),百分比/进度条/重置行全撤——
+    /// 到期是「这条数据不能当结论用」,不是「这条数据不存在」。
+    var expired = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -242,24 +312,29 @@ struct QuotaWindowRow: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(Money.formatCount(window.remaining))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.system(size: 11.5, weight: expired ? .regular : .semibold))
+                    .foregroundStyle(expired ? Color.secondary : Color.primary)
                     .monospacedDigit()
                 Text("/ \(Money.formatCount(window.limit)) \(window.unit)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 // FC-2:行尾 muted 剩余百分比,与图标/总览同源同口径
                 // (Percent.display),互证「全局最紧」的数字从哪条窗来。
-                if let fraction = window.remainingFraction {
+                // 到期后撤下:百分比是结论性断言,死数据不带结论。
+                if !expired, let fraction = window.remainingFraction {
                     Text("(\(Percent.display(fraction))%)")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
             }
-            ProgressView(value: progress)
-                .progressViewStyle(.linear)
-                .tint(tint)
-            resetLine
+            // 进度条与重置倒计时都是「还会继续」的前瞻声明,到期后全撤(数值保留即可)。
+            if !expired {
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+                    .tint(tint)
+                resetLine
+            }
         }
     }
 

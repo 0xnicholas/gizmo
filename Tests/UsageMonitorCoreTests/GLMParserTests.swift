@@ -254,6 +254,12 @@ struct GLMSubscriptionTests {
         #expect(snapshot.meta.plan == Plan(level: "pro"))
     }
 
+    @Test("观测时刻(#54):observedAt = 解析时刻(= fetchedAt)——跨分片失败保留时由引擎原样携带")
+    func observedAtIsFetchTime() throws {
+        let snapshot = try parse(withSubscription(), now: Self.insidePeriod)
+        #expect(snapshot.planValidity?.observedAt == Self.insidePeriod)
+    }
+
     @Test("响应含多条记录:取覆盖 now 的那条(不是末端最晚的那条)")
     func picksRecordCoveringNow() throws {
         let body = """
@@ -395,11 +401,12 @@ struct GLMSubscriptionTests {
         #expect(snapshot.planValidity?.productName == "GLM Coding Pro")
     }
 
-    @Test("派生字段不含账单元数据:PlanValidity 只有有效期/status/autoRenew/productName")
+    @Test("派生字段不含账单元数据:PlanValidity 只有有效期/status/autoRenew/productName/observedAt")
     func validityCarriesNoBillingMetadata() throws {
         let snapshot = try parse(withSubscription())
         let validity = try #require(snapshot.planValidity)
         let fields = Mirror(reflecting: validity).children.compactMap(\.label).sorted()
-        #expect(fields == ["autoRenew", "productName", "status", "validFrom", "validUntil"])
+        // observedAt(#54)是取数侧元数据(观测时刻),不是账单元数据
+        #expect(fields == ["autoRenew", "observedAt", "productName", "status", "validFrom", "validUntil"])
     }
 }

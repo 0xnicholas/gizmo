@@ -16,19 +16,26 @@ public struct PlanValidity: Codable, Equatable, Sendable {
     /// 是否自动续订;nil = 响应未给该字段。
     public var autoRenew: Bool?
     public var productName: String?
+    /// 该有效期最近一次成功取得的观测时刻(#54)。不是 provider 自报的字段,而是取数侧的
+    /// 元数据:解析成功时 = 解析时刻;跨订阅分片失败保留旧值时**原样携带、不推进**——
+    /// 到期结论的陈旧标注(见 `PlanState`)靠它区分「刚确认的到期」与「数据过旧的到期」。
+    /// #54 前的旧缓存文件没有该字段,解出 nil(判定时回退快照 fetchedAt,见 `PlanState.evaluate`)。
+    public var observedAt: Date?
 
     public init(
         validFrom: Date,
         validUntil: Date,
         status: String? = nil,
         autoRenew: Bool? = nil,
-        productName: String? = nil
+        productName: String? = nil,
+        observedAt: Date? = nil
     ) {
         self.validFrom = validFrom
         self.validUntil = validUntil
         self.status = status
         self.autoRenew = autoRenew
         self.productName = productName
+        self.observedAt = observedAt
     }
 
     /// 该区间是否覆盖某时刻:起刻含、末端不含(到期时刻当刻失效——与到期判定同一边界)。

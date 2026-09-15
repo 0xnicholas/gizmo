@@ -94,6 +94,14 @@ enum DevPreviewRenderer {
         menubarIcon(PreviewData.deepseekCriticalWithWindowsState(), name: "menubar-icon-deepseek-critical-window65.png", into: directory, contrast: .normal)
         menubarIcon(PreviewData.deepseekOnlyCriticalState(), name: "menubar-icon-deepseek-only-critical.png", into: directory, contrast: .critical)
 
+        // 到期形态(#54):GLM 自动到期 / 即将到期(仅文本)/ 到期状态未确认(陈旧归属)/
+        // 到期家额度失败(灰条替代橙色失败条)。OCR 必见:已到期 / 剩 2 天 /
+        // 有效期数据来自 / 额度未能刷新。
+        write(PopoverView(model: seeded(PreviewData.glmExpiredState())).frame(width: 360), name: "popover-glm-expired.png", into: directory)
+        write(PopoverView(model: seeded(PreviewData.glmExpiringSoonState())).frame(width: 360), name: "popover-glm-expiring-soon.png", into: directory)
+        write(PopoverView(model: seeded(PreviewData.glmExpiredStaleState())).frame(width: 360), name: "popover-glm-expired-stale.png", into: directory)
+        write(PopoverView(model: seeded(PreviewData.glmExpiredLoadFailedState())).frame(width: 360), name: "popover-glm-expired-load-failed.png", into: directory)
+
         print("已渲染到:\(directory.path)")
     }
 

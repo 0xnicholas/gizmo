@@ -108,6 +108,34 @@ enum Presentation {
         validityFormatter.string(from: validUntil)
     }
 
+    // MARK: - 到期态(#54)
+
+    /// 到期档文案:卡头状态位与 tab 速览共用同一常量,两处不打架。
+    static let planExpiredLabel = "已到期"
+
+    /// 「(剩 N 天)」:有效期剩余 ≤ 提醒天数时补在「有效期至」行末;N 向上取整
+    /// (0.5 天 → 剩 1 天,不出现「剩 0 天」)。已到期或剩余超窗 → nil——后缀只服务
+    /// 「即将到期」的**文本**,没有界面态,不引入第四种状态色。
+    static func expiringSoonSuffix(validUntil: Date, now: Date, reminderDays: Int) -> String? {
+        let remaining = validUntil.timeIntervalSince(now)
+        guard remaining > 0, remaining <= Double(reminderDays) * 86_400 else { return nil }
+        return "(剩 \(Int(ceil(remaining / 86_400))) 天)"
+    }
+
+    /// 到期结论的陈旧归属:「(有效期数据来自 MM-dd HH:mm)」。观测时刻距 now 超过阈值
+    /// (默认 2× 轮询周期,`Thresholds.expiryStalenessThreshold`)时附上——陈旧是展示属性,
+    /// 不是第四态;恰好等于阈值、或时钟倒漂(观测时刻在未来)都不算。
+    static func staleValidityAttribution(observedAt: Date, now: Date, threshold: TimeInterval) -> String? {
+        guard now.timeIntervalSince(observedAt) > threshold else { return nil }
+        return "(有效期数据来自 \(observedMoment(observedAt)))"
+    }
+
+    /// 观测时刻的展示口径:MM-dd HH:mm,随系统时区——那是「我们何时取到数据」,
+    /// 不是 provider 的有效期钟(后者才按北京时间,见 `validityDate`)。
+    static func observedMoment(_ date: Date) -> String {
+        resetFormatter.string(from: date)
+    }
+
     // MARK: - 域码展示名(P2-9,FC-6)
 
     /// 已知内部域码 → 展示名;未知值原样透传(展示层映射,不动解析层)。
@@ -270,12 +298,22 @@ struct EveryMinute<Content: View>: View {
 /// 看另外两家。颜色随该家 status,口径乙同型:窗口家色档 = 最紧窗自身色档;
 /// DeepSeek 无窗的「彩色 —」由余额色档给色;无快照家灰「—」。
 /// tab 圆点与数字共用同一取色档(quickFigure.colorStatus),两处不打架。
+/// 到期家(#54)速览位换「已到期」灰显——不给已失效的百分比留位置;
+/// 凭据问题优先于到期(失效家不做到期断言)。
 struct TabPercentPresentation {
     let text: String
-    /// 数字口径的取色档:持快照 = 该家 status;无快照 = nil(灰)。
+    /// 数字口径的取色档:持快照 = 该家 status;无快照或到期 = nil(灰)。
     let colorStatus: ProviderStatus?
 
-    init(runtime: ProviderRuntimeState) {
+    init(runtime: ProviderRuntimeState, now: Date = Date()) {
+        // 到期(#54):凭据问题优先于到期——失效家不做到期断言;到期家速览位换
+        // 「已到期」灰显,不给已失效的百分比留位置。
+        let plan = PlanState.evaluate(provider: runtime.provider, snapshot: runtime.snapshot, now: now)
+        if runtime.credential == .configured, plan.isExpired {
+            text = Presentation.planExpiredLabel
+            colorStatus = nil
+            return
+        }
         colorStatus = runtime.hasSnapshot ? runtime.status : nil
         if let snapshot = runtime.snapshot,
            let fraction = StatusEvaluator().lowestPlanWindowFraction(in: snapshot) {

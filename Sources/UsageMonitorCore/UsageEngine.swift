@@ -233,7 +233,18 @@ public actor UsageEngine {
             return failureEvents(provider, failure: .parse(String(describing: error)), credential: credential)
         }
 
-        return successEvents(provider, snapshot: snapshot)
+        // 套餐有效期的跨分片失败保留(#54):订阅分片未成活(传输/非 200/业务错误)而
+        // 新快照没有有效期时,携带旧值(观测时刻不动——陈旧标注靠它区分「刚确认的到期」
+        // 与「数据过旧的到期」)。分片成活时以新结果为准(含「无订阅记录」→ 无有效期信息)。
+        // 合并发生在成功路径的单一安装处之前:内存快照与落盘是同一份,不分叉。
+        var installed = snapshot
+        if let part = payload.result(.subscription), part.usableShardObject == nil,
+           installed.planValidity == nil,
+           let retained = providers[provider]?.snapshot?.planValidity {
+            installed.planValidity = retained
+        }
+
+        return successEvents(provider, snapshot: installed)
     }
 
     private func successEvents(_ provider: Provider, snapshot: Snapshot) -> [EngineEvent] {

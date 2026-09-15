@@ -18,6 +18,12 @@ public struct Thresholds: Equatable, Sendable {
     public var failureRoundsBeforeLoadFailure: Int
     /// 后台轮询周期。
     public var refreshInterval: TimeInterval
+    /// 「即将到期」的提前天数:有效期剩余 ≤ 该值时,卡上有效期行补「(剩 N 天)」
+    /// (#57 的到期前提醒通知共用同一阈值)。
+    public var expiryReminderDays: Int
+    /// 到期结论的陈旧阈值:有效期观测时刻距 now 超过该值时,到期结论带归属时刻
+    /// (默认 2× 默认轮询周期 = 60 分钟;连续失败超过约两轮即触发)。
+    public var expiryStalenessThreshold: TimeInterval
 
     public init(
         criticalRemainingFraction: Double = 0.10,
@@ -26,7 +32,9 @@ public struct Thresholds: Equatable, Sendable {
         deepseekLowBalance: Decimal = 50,
         notificationCooldown: TimeInterval = 24 * 60 * 60,
         failureRoundsBeforeLoadFailure: Int = 3,
-        refreshInterval: TimeInterval = 30 * 60
+        refreshInterval: TimeInterval = 30 * 60,
+        expiryReminderDays: Int = 3,
+        expiryStalenessThreshold: TimeInterval = 2 * 30 * 60
     ) {
         self.criticalRemainingFraction = criticalRemainingFraction
         self.lowRemainingFraction = lowRemainingFraction
@@ -35,5 +43,7 @@ public struct Thresholds: Equatable, Sendable {
         self.notificationCooldown = notificationCooldown
         self.failureRoundsBeforeLoadFailure = failureRoundsBeforeLoadFailure
         self.refreshInterval = refreshInterval
+        self.expiryReminderDays = expiryReminderDays
+        self.expiryStalenessThreshold = expiryStalenessThreshold
     }
 }

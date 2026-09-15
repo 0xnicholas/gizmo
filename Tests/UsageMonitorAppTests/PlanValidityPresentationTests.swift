@@ -21,3 +21,51 @@ struct PlanValidityPresentationTests {
         #expect(Presentation.validityDate(Date(timeIntervalSince1970: 1_792_029_600)) == "10-15")
     }
 }
+
+/// 到期态的呈现文案(#54):即将到期后缀、到期结论的陈旧归属、到期档文案。
+/// 陈旧是展示属性(不引入第四态):只在到期结论旁附归属时刻,不改变状态取值。
+@Suite("到期态呈现(#54)")
+struct PlanExpiryPresentationTests {
+    private let now = Date(timeIntervalSince1970: 1_792_000_000)  // 2026-10-14 20:26 UTC
+
+    // MARK: - 即将到期后缀
+
+    @Test("剩余 ≤ 3 天补「(剩 N 天)」;N 向上取整(2.5 天 → 剩 3 天)")
+    func expiringSoonSuffixWithinWindow() {
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(3 * 86_400), now: now, reminderDays: 3) == "(剩 3 天)")
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(2.5 * 86_400), now: now, reminderDays: 3) == "(剩 3 天)")
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(0.5 * 86_400), now: now, reminderDays: 3) == "(剩 1 天)")
+    }
+
+    @Test("剩余 > 提醒天数或已到期 → nil(后缀不出现;到期走灰化形态)")
+    func expiringSoonSuffixOutsideWindow() {
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(3.01 * 86_400), now: now, reminderDays: 3) == nil)
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(30 * 86_400), now: now, reminderDays: 3) == nil)
+        #expect(Presentation.expiringSoonSuffix(validUntil: now, now: now, reminderDays: 3) == nil)
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(-86_400), now: now, reminderDays: 3) == nil)
+    }
+
+    @Test("阈值参数化:提醒天数可换实例")
+    func expiringSoonThresholdInjectable() {
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(5 * 86_400), now: now, reminderDays: 7) == "(剩 5 天)")
+        #expect(Presentation.expiringSoonSuffix(validUntil: now.addingTimeInterval(5 * 86_400), now: now, reminderDays: 3) == nil)
+    }
+
+    // MARK: - 陈旧归属
+
+    @Test("观测时刻距 now 超过阈值 → 「(有效期数据来自 MM-dd HH:mm)」;恰好等于阈值不算")
+    func staleAttribution() {
+        let observed = now.addingTimeInterval(-3_601)
+        let expected = "(有效期数据来自 \(Presentation.observedMoment(observed)))"
+        #expect(Presentation.staleValidityAttribution(observedAt: observed, now: now, threshold: 3_600) == expected)
+        #expect(Presentation.staleValidityAttribution(observedAt: now.addingTimeInterval(-3_600), now: now, threshold: 3_600) == nil)
+        #expect(Presentation.staleValidityAttribution(observedAt: now.addingTimeInterval(-60), now: now, threshold: 3_600) == nil)
+        // 时钟倒漂(观测时刻在未来)不算陈旧,与相对时间分档的防御口径一致
+        #expect(Presentation.staleValidityAttribution(observedAt: now.addingTimeInterval(60), now: now, threshold: 3_600) == nil)
+    }
+
+    @Test("到期档文案:卡头与 tab 共用同一常量")
+    func expiredLabelShared() {
+        #expect(Presentation.planExpiredLabel == "已到期")
+    }
+}

@@ -54,6 +54,51 @@ struct TabPercentPresentationTests {
         #expect(presentation.colorStatus == nil)
     }
 
+    // MARK: - 到期态(#54)
+
+    @Test("到期家:tab 换「已到期」,取色灰(nil)——速览位不给已失效的数字留位置")
+    func expiredShowsExpiredLabel() {
+        let expired = PreviewData.glm(validity: PreviewData.validity(untilDays: -2, fromDays: -32))
+        let presentation = TabPercentPresentation(runtime: PreviewData.runtime(.glm, snapshot: expired), now: Date())
+        #expect(presentation.text == "已到期")
+        #expect(presentation.colorStatus == nil)
+    }
+
+    @Test("到期边界:now == 有效期末端当刻即「已到期」")
+    func expiryBoundaryIsImmediate() {
+        let now = Date()
+        let validity = PlanValidity(
+            validFrom: now.addingTimeInterval(-30 * 86_400),
+            validUntil: now,
+            status: "VALID",
+            autoRenew: false
+        )
+        let snapshot = PreviewData.glm(validity: validity)
+        #expect(TabPercentPresentation(runtime: PreviewData.runtime(.glm, snapshot: snapshot), now: now).text == "已到期")
+        #expect(TabPercentPresentation(runtime: PreviewData.runtime(.glm, snapshot: snapshot), now: now.addingTimeInterval(-1)).text == "27%")
+    }
+
+    @Test("无到期断言的家不灰:未到期照常显百分比与色档;无有效期信息照旧「—」/百分比")
+    func unknownStaysUnaffected() {
+        let active = figure(PreviewData.runtime(.glm, snapshot: PreviewData.glm()))
+        #expect(active.text == "27%")
+        #expect(active.colorStatus == .low)  // 15_929/60_000 = 26.5%:照常的色档,不受到期口径影响
+
+        let noValidity = PreviewData.glm(validity: nil)
+        let none = figure(PreviewData.runtime(.glm, snapshot: noValidity))
+        #expect(none.text == "27%", "无有效期信息 = 无到期断言,tab 照常")
+    }
+
+    @Test("凭据问题优先于到期:失效家不显「已到期」(卡片回到既有凭据占位,tab 不做到期断言)")
+    func credentialBeatsExpiry() {
+        let expired = PreviewData.glm(validity: PreviewData.validity(untilDays: -2, fromDays: -32))
+        let presentation = TabPercentPresentation(
+            runtime: PreviewData.runtime(.glm, snapshot: expired, credential: .invalid),
+            now: Date()
+        )
+        #expect(presentation.text != "已到期")
+    }
+
     @Test("与总览大数字同口径:最紧家的 tab 数字 = 全局数字;他家各自独立成立")
     func consistentWithGlobalFigure() {
         let state = PreviewData.overviewState()

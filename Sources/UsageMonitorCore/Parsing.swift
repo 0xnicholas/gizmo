@@ -7,6 +7,23 @@ public protocol ProviderParser: Sendable {
 
 // MARK: - 容错 JSON 读取
 
+extension FetchPartResult {
+    /// 可选分片的「成活」判定(#54):HTTP 200 + 可解析 JSON 信封 + 无业务错误时返回根对象;
+    /// 传输失败 / 非 200 / 业务错误体 / 非 JSON → nil。解析器的静默退化与引擎的
+    /// 跨分片失败保留(`UsageEngine`)共用同一口径——「这次分片算不算失败」只此一处定义。
+    var usableShardObject: [String: Any]? {
+        guard case .response(let response) = self, response.statusCode == 200,
+              let root = try? JSONReader.object(from: response.body, context: "optional-shard")
+        else { return nil }
+        do {
+            try JSONReader.businessError(in: root, context: "optional-shard")
+        } catch {
+            return nil
+        }
+        return root
+    }
+}
+
 /// JSONSerialization 之上的容错读取:字段缺失/类型变化返回 nil 而不崩溃,
 /// 未知字段由 `raw` 原文保留。
 enum JSONReader {

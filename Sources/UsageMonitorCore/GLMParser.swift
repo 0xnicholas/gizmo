@@ -98,25 +98,11 @@ public struct GLMParser: ProviderParser {
 
     // MARK: - 可选分片
 
-    /// 可选分片的容错信封:传输失败 / 非 200 / 非 JSON / 业务错误体 → nil,
-    /// 由调用方决定退化形态(近 7 天消耗 → `.failed`,有效期 → 无有效期信息),
-    /// 也由调用方决定哪些分片进 raw(见 `rawParts`)。
-    static func optionalShardObject(_ result: FetchPartResult, context: String) -> [String: Any]? {
-        guard case .response(let response) = result, response.statusCode == 200,
-              let root = try? JSONReader.object(from: response.body, context: context)
-        else { return nil }
-        do {
-            try JSONReader.businessError(in: root, context: context)
-        } catch {
-            return nil
-        }
-        return root
-    }
-
     /// 近 7 天消耗:请求窗口由适配器给定(自然滚动 7 天),此处只做日桶求和。
+    /// 分片成活口径见 `FetchPartResult.usableShardObject`(与引擎的跨分片失败保留共用)。
     static func rollingUsage(from result: FetchPartResult?) -> RollingUsage? {
         guard let result else { return nil }
-        guard let root = optionalShardObject(result, context: "glm/model-usage"),
+        guard let root = result.usableShardObject,
               let data = JSONReader.object(root["data"])
         else {
             return .failed
@@ -136,10 +122,11 @@ public struct GLMParser: ProviderParser {
     // MARK: - 套餐有效期(订阅分片)
 
     /// 订阅分片 → 套餐有效期。**静默退化**:分片缺失/失败、响应无记录、有效期串畸形
-    /// 都返回 nil(卡片不渲染该行,其它字段照常)。口径见 docs/research/glm-subscription-source.md。
+    /// 都返回 nil(卡片不渲染该行,其它字段照常);observedAt = 解析时刻(跨分片失败
+    /// 保留时由引擎原样携带,见 `UsageEngine`)。口径见 docs/research/glm-subscription-source.md。
     static func planValidity(from result: FetchPartResult?, now: Date) -> PlanValidity? {
         guard let result,
-              let root = optionalShardObject(result, context: "glm/subscription"),
+              let root = result.usableShardObject,
               let records = JSONReader.array(root["data"])
         else { return nil }
 
@@ -153,7 +140,8 @@ public struct GLMParser: ProviderParser {
                 validUntil: bounds.until,
                 status: JSONReader.string(record["status"]),
                 autoRenew: Self.autoRenew(record["autoRenew"]),
-                productName: JSONReader.string(record["productName"])
+                productName: JSONReader.string(record["productName"]),
+                observedAt: now
             )
         }
 

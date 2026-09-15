@@ -624,3 +624,98 @@ struct UsageEngineTests {
         #expect(after.lastUpdatedAt == Fixture.epoch)
     }
 }
+
+/// 套餐有效期的跨分片失败保留(#54):有效期一旦取得,后续轮询里订阅分片失败不清掉它,
+/// 观测时刻不动(陈旧标注靠它);分片成活(200 + 无业务错误)时以新结果为准。
+/// 挂点在引擎成功路径的单一安装处:内存快照与落盘是同一份合并结果,不分叉。
+@Suite("引擎:套餐有效期跨分片失败保留")
+struct PlanValidityRetentionTests {
+    /// 额度主分片 + 订阅分片(实测形状:有效期至 2026-10-15 10:00 +08:00)。
+    private static func glmWithSubscription() -> ProviderPayload {
+        Payloads.glm().merging(.ok(ParserFixtures.glmSubscription, part: .subscription))
+    }
+
+    @Test("首次成功取得:planValidity 落内存与缓存,observedAt = 取得时刻")
+    func firstSuccessInstallsValidity() async {
+        let harness = EngineHarness(payloads: [.glm: Self.glmWithSubscription()])
+        _ = await harness.engine.refreshAll()
+
+        let state = await harness.engine.state
+        let validity = state.provider(.glm).snapshot?.planValidity
+        #expect(validity?.validUntil == Date(timeIntervalSince1970: 1_792_029_600))
+        #expect(validity?.observedAt == Fixture.epoch)
+        #expect(harness.cache.snapshots()[.glm]?.planValidity == validity)
+    }
+
+    @Test("订阅分片失败:最近一次成功值保留,observedAt 不动(陈旧随失败时长增长)")
+    func shardFailureRetainsLastValidity() async {
+        let harness = EngineHarness(payloads: [.glm: Self.glmWithSubscription()])
+        _ = await harness.engine.refreshAll()
+
+        // 下一轮:额度照常,订阅分片传输失败
+        harness.clock.advance(30 * 60)
+        harness.fetchers[.glm]?.respond(with: Payloads.glm().merging(
+            .failure(.transport("timeout"), part: .subscription)
+        ))
+        _ = await harness.engine.refreshAll()
+
+        let state = await harness.engine.state
+        let snapshot = state.provider(.glm).snapshot
+        #expect(snapshot?.meta.fetchedAt == Fixture.epoch.addingTimeInterval(30 * 60), "额度数据照常刷新")
+        #expect(snapshot?.planValidity?.validUntil == Date(timeIntervalSince1970: 1_792_029_600), "有效期不清掉")
+        #expect(snapshot?.planValidity?.observedAt == Fixture.epoch, "观测时刻不随失败推进")
+        // 内存与落盘同一份(单一安装处,不分叉)
+        #expect(harness.cache.snapshots()[.glm]?.planValidity == snapshot?.planValidity)
+
+        // 连续再失败一轮:仍保留
+        harness.clock.advance(30 * 60)
+        harness.fetchers[.glm]?.respond(with: Payloads.glm().merging(
+            .response("{}", part: .subscription, statusCode: 500)
+        ))
+        _ = await harness.engine.refreshAll()
+        let retained = await harness.engine.state.provider(.glm).snapshot?.planValidity
+        #expect(retained?.validUntil == Date(timeIntervalSince1970: 1_792_029_600))
+        #expect(retained?.observedAt == Fixture.epoch)
+    }
+
+    @Test("分片成活但无订阅记录:以新结果为准(退回无有效期信息,不保留旧值)")
+    func successfulEmptyListReplaces() async {
+        let harness = EngineHarness(payloads: [.glm: Self.glmWithSubscription()])
+        _ = await harness.engine.refreshAll()
+
+        harness.fetchers[.glm]?.respond(with: Payloads.glm().merging(
+            .ok(#"{"code":200,"data":[],"success":true}"#, part: .subscription)
+        ))
+        _ = await harness.engine.refreshAll()
+
+        let state = await harness.engine.state
+        #expect(state.provider(.glm).snapshot?.planValidity == nil)
+        #expect(harness.cache.snapshots()[.glm]?.planValidity == nil)
+    }
+
+    @Test("分片成活且续订:新区间替换旧值,observedAt 推进")
+    func renewedRecordReplaces() async {
+        let harness = EngineHarness(payloads: [.glm: Self.glmWithSubscription()])
+        _ = await harness.engine.refreshAll()
+
+        harness.clock.advance(30 * 60)
+        let renewed = #"{"code":200,"data":[{"productName":"GLM Coding Pro","status":"VALID","valid":"2026-10-15 10:00:00-2026-11-15 10:00:00","autoRenew":1}],"success":true}"#
+        harness.fetchers[.glm]?.respond(with: Payloads.glm().merging(.ok(renewed, part: .subscription)))
+        _ = await harness.engine.refreshAll()
+
+        let validity = await harness.engine.state.provider(.glm).snapshot?.planValidity
+        #expect(validity?.validUntil == Date(timeIntervalSince1970: 1_794_708_000))
+        #expect(validity?.observedAt == Fixture.epoch.addingTimeInterval(30 * 60))
+    }
+
+    @Test("他家的 profile 分片失败不触发保留逻辑(保留只认订阅分片)")
+    func kimiProfileFailureIsIrrelevant() async {
+        let harness = EngineHarness(payloads: [
+            .kimi: Payloads.kimi().merging(.failure(.transport("timeout"), part: .profile))
+        ])
+        _ = await harness.engine.refreshAll()
+        let state = await harness.engine.state
+        #expect(state.provider(.kimi).snapshot != nil)
+        #expect(state.provider(.kimi).snapshot?.planValidity == nil)
+    }
+}

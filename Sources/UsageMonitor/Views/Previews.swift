@@ -52,14 +52,20 @@ enum PreviewData {
 
     /// 套餐有效期样例(#53):相对现在构造——区间盖住当下(常态「有效期至」行),
     /// 具体日期随渲染时刻漂移,验收只断言模式(若需固定日期形态可传 offsets)。
-    static func validity(untilDays: Double = 30, fromDays: Double = -30) -> PlanValidity {
+    /// observedAt(#54):到期场景里单独控制有效期的观测时刻(陈旧归属轴)。
+    static func validity(
+        untilDays: Double = 30,
+        fromDays: Double = -30,
+        observedAt: Date? = nil
+    ) -> PlanValidity {
         let now = Date()
         return PlanValidity(
             validFrom: now.addingTimeInterval(fromDays * 86_400),
             validUntil: now.addingTimeInterval(untilDays * 86_400),
             status: "VALID",
             autoRenew: false,
-            productName: "GLM Coding Pro"
+            productName: "GLM Coding Pro",
+            observedAt: observedAt
         )
     }
 
@@ -214,6 +220,70 @@ enum PreviewData {
                 snapshots: providers.compactMapValues(\.snapshot),
                 evaluator: StatusEvaluator()
             )
+        )
+    }
+
+    // MARK: - 到期形态(#54)
+
+    /// 到期场景共用构造:GLM 套餐健康(65%)、有效期与失败态按入参;他者健康。
+    /// glmAge 控制 GLM 快照新旧,validity 自带 observedAt 控制有效期观测时刻
+    /// (两者独立——复现「额度新鲜、只有订阅分片连续失败」的陈旧形态)。
+    private static func expiryScenarioState(
+        validity: PlanValidity?,
+        glmAge: TimeInterval = freshAge,
+        glmLoadFailed: Bool = false,
+        glmConsecutiveFailures: Int = 0
+    ) -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(
+            .glm,
+            snapshot: glm(weeklyRemaining: 39_000, validity: validity, fetchedAt: Date().addingTimeInterval(-glmAge)),
+            loadFailed: glmLoadFailed,
+            consecutiveFailures: glmConsecutiveFailures
+        )
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 66))
+        // 到期场景里他者保持健康(余额走 62.47),OCR 验收时唯一的形态异常就是到期本身。
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "62.47"))
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: Date().addingTimeInterval(-glmAge),
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator()
+            )
+        )
+    }
+
+    /// GLM 自动到期:有效期 2 天前结束(订阅分片正常,观测时刻新鲜)——头部灰「已到期」、
+    /// 数值灰化、无百分比/进度条;余额/钱包与近 7 天消耗不跟着灰;tab「已到期」。
+    static func glmExpiredState() -> EngineState {
+        expiryScenarioState(validity: validity(untilDays: -2, fromDays: -32))
+    }
+
+    /// 即将到期:剩 2 天——「有效期至」行补「(剩 2 天)」,仅文本、无第四态,
+    /// 界面其它一切照常(绿「正常」照旧)。
+    static func glmExpiringSoonState() -> EngineState {
+        expiryScenarioState(validity: validity(untilDays: 2, fromDays: -28))
+    }
+
+    /// 到期状态未确认:已到期,但有效期观测时刻是 90 分钟前(超 2× 轮询周期)——
+    /// 到期结论带归属「(有效期数据来自 …)」;额度数据本身新鲜(5 分钟前)。
+    static func glmExpiredStaleState() -> EngineState {
+        expiryScenarioState(validity: validity(
+            untilDays: -2,
+            fromDays: -32,
+            observedAt: Date().addingTimeInterval(-90 * 60)
+        ))
+    }
+
+    /// 到期家额度失败:已到期 + 额度接口整体失败(3 轮)——灰条「额度未能刷新
+    /// (最后成功 HH:mm)」替代橙色「加载失败」条,重试入口保留。
+    static func glmExpiredLoadFailedState() -> EngineState {
+        expiryScenarioState(
+            validity: validity(untilDays: -2, fromDays: -32),
+            glmAge: 2 * 3_600,
+            glmLoadFailed: true,
+            glmConsecutiveFailures: 3
         )
     }
 }

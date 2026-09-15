@@ -87,4 +87,21 @@ struct SnapshotFileCodecTests {
         #expect(text.contains("planValidity"))
         #expect(try codec.decode(encoded)[.glm]?.planValidity == snapshot.planValidity)
     }
+
+    @Test("observedAt(#54):落盘保留、重读一致;#53 形状的旧文件缺该字段解出 nil")
+    func observedAtRoundTripAndLegacyDecode() throws {
+        // #54 前的落盘形状:planValidity 在、observedAt 不在。
+        let legacy = Data(#"{"version":1,"snapshots":[{"meta":{"provider":"glm","fetchedAt":"2023-11-14T22:13:20Z"},"windows":[],"balances":[],"planValidity":{"validFrom":"2026-09-15T02:00:00Z","validUntil":"2026-10-15T02:00:00Z"},"raw":"{}"}]}"#.utf8)
+
+        let decoded = try codec.decode(legacy)
+        #expect(decoded[.glm]?.planValidity?.observedAt == nil, "旧文件缺 observedAt 解出 nil(回退快照 fetchedAt 由判定层处理)")
+        #expect(decoded[.glm]?.planValidity?.validUntil == Fixture.validity().validUntil)
+
+        // 落盘重读:observedAt 原样保留(跨分片失败保留的那份在重启后仍带着旧观测时刻)
+        var retained = Fixture.validity()
+        retained.observedAt = Fixture.epoch.addingTimeInterval(-3_600)
+        let snapshot = Fixture.snapshot(provider: .glm, planValidity: retained)
+        let encoded = try codec.encode([.glm: snapshot])
+        #expect(try codec.decode(encoded)[.glm]?.planValidity == retained)
+    }
 }
