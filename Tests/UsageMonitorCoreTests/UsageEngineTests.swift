@@ -719,3 +719,75 @@ struct PlanValidityRetentionTests {
         #expect(state.provider(.kimi).snapshot?.planValidity == nil)
     }
 }
+
+/// 到期家的临界通知抑制(#56):对一条不能用的额度报「已达临界」是纯噪音——
+/// 到期家跨入临界不发通知;未到期家的临界通知语义与今天完全一致。
+/// 全局结论的剔除(GlobalOverview)另见 `GlobalOverviewExpiryTests`。
+@Suite("引擎:到期家的临界通知抑制(#56)")
+struct ExpiredCriticalSuppressionTests {
+    /// 额度临界(5 小时窗 5%)+ 订阅有效期已过:末端 2023-11-15 06:00 +08:00,
+    /// 早于 Fixture.epoch(2023-11-15 06:13:20 +08:00)→ 判 expired。
+    private static func expiredGlm() -> ProviderPayload {
+        let subscription = #"{"code":200,"data":[{"productName":"GLM Coding Pro","status":"VALID","valid":"2023-10-15 10:00:00-2023-11-15 06:00:00","autoRenew":0}],"success":true}"#
+        return Payloads.glm(fiveHourRemaining: 590).merging(.ok(subscription, part: .subscription))
+    }
+
+    @Test("到期家跨入临界:不发通知;快照/状态/全局剔除照常")
+    func expiredCriticalIsSuppressed() async {
+        let harness = EngineHarness(payloads: [.glm: Self.expiredGlm()])
+        let events = await harness.engine.refreshAll()
+
+        #expect(events.contains(.snapshotUpdated(.glm)))
+        #expect(!events.contains { $0.notificationKind == "usage" }, "不能用的额度不报临界")
+        let state = await harness.engine.state
+        #expect(state.provider(.glm).status == .critical, "status 推导不变——只有通知被抑制")
+        #expect(state.provider(.glm).snapshot != nil)
+        #expect(state.overview.expiredProviders == [.glm])
+        #expect(state.overview.worstStatus == nil, "死档不拉低全局最差")
+    }
+
+    @Test("跨过冷却窗口后仍到期:持续静默(抑制不是 24h 滚动静默)")
+    func expiredStaysSilentAcrossCooldown() async {
+        let harness = EngineHarness(payloads: [.glm: Self.expiredGlm()])
+        _ = await harness.engine.refreshAll()
+
+        harness.clock.advance(25 * 3_600)
+        let again = await harness.engine.refreshAll()
+        #expect(!again.contains { $0.notificationKind == "usage" })
+    }
+
+    @Test("同一轮里未到期家的临界照发(抑制不牵连他者)")
+    func nonExpiredCriticalStillFires() async {
+        let harness = EngineHarness(payloads: [
+            .glm: Self.expiredGlm(),
+            .kimi: Payloads.kimi(weekRemaining: 5),
+        ])
+        let events = await harness.engine.refreshAll()
+
+        #expect(events.contains(.usageCritical(UsageAlert(
+            provider: .kimi,
+            basis: .window(label: "周窗口", remaining: 5, limit: 100, unit: "请求", percent: 5)
+        ))))
+        #expect(!events.contains { event in
+            if case .usageCritical(let alert) = event, alert.provider == .glm { return true }
+            return false
+        })
+    }
+
+    @Test("续订翻回后停留临界:不重发(到期期间的边沿已被消费,与「跨入才通知」一致)")
+    func renewalWhileCriticalDoesNotRefire() async {
+        let harness = EngineHarness(payloads: [.glm: Self.expiredGlm()])
+        _ = await harness.engine.refreshAll()  // 到期抑制,边沿被消费
+
+        // 续订:有效期推后(2026-10-15 +08:00,远晚于 epoch),额度仍临界
+        harness.fetchers[.glm]?.respond(with: Payloads.glm(fiveHourRemaining: 590).merging(
+            .ok(ParserFixtures.glmSubscription, part: .subscription)
+        ))
+        let renewed = await harness.engine.refreshAll()
+
+        #expect(!renewed.contains { $0.notificationKind == "usage" })
+        let state = await harness.engine.state
+        #expect(state.overview.expiredProviders.isEmpty, "续订翻回,重新参与全局结论")
+        #expect(state.overview.worstStatus == .critical)
+    }
+}

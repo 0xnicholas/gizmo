@@ -324,6 +324,13 @@ struct GlobalOverviewBar: View {
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(Presentation.color(for: state.overview.worstStatus, scheme: scheme))
                 }
+                // #56:退出口径的家在结论位承认出来——否则只能逐个 tab 找。灰色次要:
+                // 承认事实,不与健康档同台争色。
+                if !expiredLine.isEmpty {
+                    Text("已到期:" + expiredLine)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             // 全局结论扶正(骨架A,P0-2):大号百分比与菜单栏图标同源同口径,免读整句副行。
@@ -346,7 +353,17 @@ struct GlobalOverviewBar: View {
         if state.isFreshInstall {
             return "尚未配置凭据"
         }
+        // 三家全到期(#56):数字口径已无参评家,标题讲清「—」的来历。
+        if Presentation.isAllPlansExpired(in: state) {
+            return "三家套餐均已到期"
+        }
         guard let tightest = state.overview.tightest else {
+            // 可计入的窗口家全部到期(#56):窗口数据存在、只是退出了口径——
+            // 不说「暂无窗口数据」(与 a11y 同口径,那半句只在无到期家时才诚实)。
+            // 余额型家(DeepSeek)无套餐,不改变「均已到期」的事实。
+            if !Presentation.namedExpiredProviders(in: state).isEmpty {
+                return "套餐均已到期"
+            }
             return state.overview.snapshotCount > 0 ? "暂无窗口数据" : "正在获取用量…"
         }
         return "全局最紧:\(tightest.provider.displayName) · \(tightest.windowLabel)"
@@ -355,6 +372,11 @@ struct GlobalOverviewBar: View {
     private func subtitle(now: Date) -> String {
         if state.isFreshInstall {
             return "菜单栏图标显示「—」;粘贴凭据后自动开始刷新"
+        }
+        // 两种到期形态(全三家 / 可计入窗口家全部到期)同文案:都在讲「—」的来历与出路。
+        if Presentation.isAllPlansExpired(in: state)
+            || (state.overview.tightest == nil && !Presentation.namedExpiredProviders(in: state).isEmpty) {
+            return "菜单栏图标显示「—」;续订后恢复显示"
         }
         guard let tightest = state.overview.tightest else {
             return "菜单栏图标显示「—」,直到有套餐窗口数据"
@@ -383,5 +405,11 @@ struct GlobalOverviewBar: View {
             return "偏低:" + lows.map(\.displayName).joined(separator: "、")
         }
         return nil
+    }
+
+    /// 到期家点名(#56):展示序、「、」连接;与 a11y 到期半句同口径
+    /// (`Presentation.namedExpiredProviders`)、仅显示名不同(与 alertLine 同用显示名)。
+    private var expiredLine: String {
+        Presentation.namedExpiredProviders(in: state).map(\.displayName).joined(separator: "、")
     }
 }

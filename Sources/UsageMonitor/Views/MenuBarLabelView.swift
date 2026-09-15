@@ -7,6 +7,9 @@ struct MenuBarLabelView: View {
 
     var body: some View {
         let presentation = GlobalPercentPresentation(state: model.state, scheme: scheme)
+        // 一行说明(#45 + #56):VoiceOver 与 tooltip 共用同一文案——特别是全到期时
+        // 灰「—」必须讲清「三家套餐均已到期」,不产生「是不是没联网」的歧义。
+        let oneLiner = IconAccessibilityPresentation(state: model.state).text
         Text(presentation.text)
             .font(.system(size: 12, weight: .semibold, design: .rounded))
             .monospacedDigit()
@@ -15,6 +18,7 @@ struct MenuBarLabelView: View {
             .opacity(presentation.isStale ? 0.55 : 1)
             // a11y 一行说明(IC-2):VoiceOver 读完整口径(最紧窗 + 全局最差),
             // 不只读图标本体的数字。
-            .accessibilityLabel(IconAccessibilityPresentation(state: model.state).text)
+            .accessibilityLabel(oneLiner)
+            .help(oneLiner)
     }
 }

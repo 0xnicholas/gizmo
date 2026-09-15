@@ -21,7 +21,7 @@ struct PercentTests {
                 Fixture.planWindow(limit: 10_000, remaining: 30, label: "5 小时窗"),
             ]),
         ]
-        let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator)
+        let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator, now: Fixture.epoch)
         let tightest = try! #require(overview.tightest)
         #expect(overview.iconPercent == tightest.displayPercent)
         #expect(tightest.displayPercent == 1)  // 0.3% → 图标与总览条都显示 1%

@@ -69,7 +69,11 @@ enum PreviewData {
         )
     }
 
-    static func kimi(weekRemaining: Int = 66, fetchedAt: Date = PreviewData.freshFetchedAt()) -> Snapshot {
+    static func kimi(
+        weekRemaining: Int = 66,
+        validity: PlanValidity? = nil,
+        fetchedAt: Date = PreviewData.freshFetchedAt()
+    ) -> Snapshot {
         Snapshot(
             meta: SnapshotMeta(provider: .kimi, plan: Plan(level: "Allegretto", domain: "DOMAIN_NEXUS"), fetchedAt: fetchedAt, concurrencyLimit: 20),
             windows: [
@@ -78,6 +82,7 @@ enum PreviewData {
             ],
             balances: [Balance(type: .wallet, amount: Decimal(string: "3.5")!, currency: "CNY")],
             rollingUsage: nil,
+            planValidity: validity,
             raw: "{}"
         )
     }
@@ -121,7 +126,8 @@ enum PreviewData {
             lastRefreshStartedAt: Date().addingTimeInterval(-3 * 3_600),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
     }
@@ -138,7 +144,8 @@ enum PreviewData {
             lastRefreshFinishedAt: Date().addingTimeInterval(-freshAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
     }
@@ -156,7 +163,8 @@ enum PreviewData {
             lastRefreshFinishedAt: Date().addingTimeInterval(-glmAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
     }
@@ -194,7 +202,8 @@ enum PreviewData {
             credentialReadFailures: [.glm],
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
     }
@@ -218,7 +227,8 @@ enum PreviewData {
             lastRefreshFinishedAt: Date().addingTimeInterval(-freshAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
     }
@@ -249,7 +259,8 @@ enum PreviewData {
             lastRefreshStartedAt: Date().addingTimeInterval(-glmAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
     }
@@ -284,6 +295,49 @@ enum PreviewData {
             glmAge: 2 * 3_600,
             glmLoadFailed: true,
             glmConsecutiveFailures: 3
+        )
+    }
+
+    /// 可自然达到的「全到期」形态:GLM+Kimi 到期、DeepSeek 未配置——可计入的窗口家
+    /// 全部退出后,图标回灰「—」、总览条标题换「套餐均已到期」(不到「三家」,
+    /// DeepSeek 无套餐且未配置)。#58 手动标记落地后用户真实会遇到的形态。
+    static func glmKimiExpiredDeepSeekMissingState() -> EngineState {
+        let expired = validity(untilDays: -2, fromDays: -32)
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: 3_000, validity: expired))
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 5, validity: expired))
+        providers[.deepseek] = runtime(.deepseek, snapshot: nil, credential: .missing)
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator(),
+                now: Date()
+            )
+        )
+    }
+
+    /// 三家全到期(#56):图标回灰「—」、a11y/tooltip 讲清「三家套餐均已到期」的
+    /// 验收形态。构造态:DeepSeek 现实恒 unknown(余额型家不做到期断言),此态在
+    /// #58 手动标记落地前不可自然达到——口径与渲染先行,planStates 直接注入。
+    static func allPlansExpiredState() -> EngineState {
+        let expired = validity(untilDays: -2, fromDays: -32)
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: 3_000, validity: expired))
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 5, validity: expired))
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "62.47"))
+        let expiredState: (Provider) -> PlanState = { provider in
+            .expired(source: .provider, validUntil: expired.validUntil, observedAt: Date())
+        }
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator(),
+                planStates: Dictionary(uniqueKeysWithValues: Provider.allCases.map { ($0, expiredState($0)) })
+            )
         )
     }
 }

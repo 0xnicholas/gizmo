@@ -42,13 +42,33 @@ enum Presentation {
         }
     }
 
-    /// 「点名某状态家」的共享口径:持快照且凭据正常(失效家的旧档是凭据问题,
-    /// 归横幅)。总览条 alertLine 与图标 a11y 最差半句共用,防两处口径漂移。
+    /// 「点名某状态家」的共享口径:持快照、凭据正常、且**未到期**(失效家的旧档
+    /// 是凭据问题归横幅;到期家的档是死数据,#56 退出全局结论)。总览条 alertLine
+    /// 与图标 a11y 最差半句共用,防两处口径漂移。
     static func providers(withStatus status: ProviderStatus, in state: EngineState) -> [Provider] {
         Provider.displayOrder.filter { provider in
             let runtime = state.provider(provider)
             return runtime.hasSnapshot && runtime.credential == .configured && runtime.status == status
+                && !state.overview.expiredProviders.contains(provider)
         }
+    }
+
+    /// 「点名到期家」的共享口径(#56):与 `providers(withStatus:)` 同型的**点名口径**
+    /// ——与引擎侧 `state.overview.expiredProviders`(枚举序、不看凭据)是两个东西:
+    /// 这里按展示序、且只点名凭据正常的持快照到期家(凭据问题优先于到期,归横幅)。
+    /// 总览条「已到期:」行、图标 a11y 的到期半句、全到期判定共用。
+    static func namedExpiredProviders(in state: EngineState) -> [Provider] {
+        Provider.displayOrder.filter { provider in
+            state.overview.expiredProviders.contains(provider)
+                && state.provider(provider).credential == .configured
+        }
+    }
+
+    /// 三家全到期(#56):图标回灰「—」时「—」不能再产生「是不是没联网」的歧义——
+    /// a11y 与 tooltip 讲清「三家套餐均已到期」。现实里 DeepSeek 恒 unknown,
+    /// 此态在 #58 手动标记落地前不可自然达到(预览/测试可注入 planStates 构造)。
+    static func isAllPlansExpired(in state: EngineState) -> Bool {
+        namedExpiredProviders(in: state).count == Provider.allCases.count
     }
 
     static func symbol(for status: ProviderStatus?) -> String {
@@ -363,9 +383,11 @@ struct GlobalPercentPresentation {
 
     /// 无任何 plan-window 时:有快照的家按自身档位给色(DeepSeek-only 的余额档
     /// 「彩色 —」);全无快照则灰(全新安装口径不变)。按展示序取第一个持快照家,
-    /// 现实里无窗持快照的只有 DeepSeek。
+    /// 现实里无窗持快照的只有 DeepSeek。到期家(#56)被跳过——死档不给「—」夸活;
+    /// 全部持快照家都到期时退灰(与全到期图标形态一致)。
     private static func snapshotHolderStatus(_ state: EngineState) -> ProviderStatus? {
         for provider in Provider.displayOrder {
+            guard !state.overview.expiredProviders.contains(provider) else { continue }
             let runtime = state.provider(provider)
             if runtime.hasSnapshot { return runtime.status }
         }
@@ -386,13 +408,24 @@ struct IconAccessibilityPresentation {
             text = "用量监视器,尚无数据"
             return
         }
+        // 三家全到期(#56):「—」必须讲清来历——不是没联网、不是没数据,
+        // 是三家套餐均已到期。
+        if Presentation.isAllPlansExpired(in: state) {
+            text = "用量监视器,三家套餐均已到期"
+            return
+        }
+        let expired = Presentation.namedExpiredProviders(in: state)
         var parts: [String] = []
         if let tightest = state.overview.tightest {
             parts.append("全局最紧剩余 \(tightest.displayPercent)%,\(Presentation.shortName(tightest.provider)) \(tightest.windowLabel)")
-        } else {
+        } else if expired.isEmpty {
+            // 有到期家时不再报「暂无窗口数据」——「—」的来历就是到期,由到期半句讲清。
             parts.append("暂无窗口数据")
         }
         parts.append(Self.worstClause(state))
+        if !expired.isEmpty {
+            parts.append("已到期:" + expired.map(Presentation.shortName).joined(separator: "、"))
+        }
         text = parts.filter { !$0.isEmpty }.joined(separator: ";")
     }
 

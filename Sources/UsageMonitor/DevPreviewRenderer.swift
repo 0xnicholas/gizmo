@@ -96,11 +96,24 @@ enum DevPreviewRenderer {
 
         // 到期形态(#54):GLM 自动到期 / 即将到期(仅文本)/ 到期状态未确认(陈旧归属)/
         // 到期家额度失败(灰条替代橙色失败条)。OCR 必见:已到期 / 剩 2 天 /
-        // 有效期数据来自 / 额度未能刷新。
+        // 有效期数据来自 / 额度未能刷新。#56 起到期家已退出全局结论:总览条改由
+        // Kimi 领衔(66%)并补「已到期:GLM Coding Plan」行。
         write(PopoverView(model: seeded(PreviewData.glmExpiredState())).frame(width: 360), name: "popover-glm-expired.png", into: directory)
         write(PopoverView(model: seeded(PreviewData.glmExpiringSoonState())).frame(width: 360), name: "popover-glm-expiring-soon.png", into: directory)
         write(PopoverView(model: seeded(PreviewData.glmExpiredStaleState())).frame(width: 360), name: "popover-glm-expired-stale.png", into: directory)
         write(PopoverView(model: seeded(PreviewData.glmExpiredLoadFailedState())).frame(width: 360), name: "popover-glm-expired-load-failed.png", into: directory)
+
+        // 全到期(#56):三家套餐均已到期——图标回灰「—」,a11y 与 tooltip 讲清来历,
+        // 总览条标题换成「三家套餐均已到期」并点名三家。OCR 必见:三家套餐均已到期 /
+        // 已到期:。构造态(DeepSeek 恒 unknown,planStates 注入),见 PreviewData 注释。
+        write(PopoverView(model: seeded(PreviewData.allPlansExpiredState())).frame(width: 360), name: "popover-all-plans-expired.png", into: directory)
+        menubarIcon(PreviewData.allPlansExpiredState(), name: "menubar-icon-all-plans-expired.png", into: directory)
+
+        // 可自然达到的全到期形态(#58 后):GLM+Kimi 到期、DeepSeek 未配置——标题
+        // 「套餐均已到期」(不到「三家」)、图标灰「—」、a11y 只报「已到期:两家」。
+        // OCR 必见:套餐均已到期 / 已到期:。
+        write(PopoverView(model: seeded(PreviewData.glmKimiExpiredDeepSeekMissingState())).frame(width: 360), name: "popover-glm-kimi-expired.png", into: directory)
+        menubarIcon(PreviewData.glmKimiExpiredDeepSeekMissingState(), name: "menubar-icon-glm-kimi-expired.png", into: directory)
 
         print("已渲染到:\(directory.path)")
     }

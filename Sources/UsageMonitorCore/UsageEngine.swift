@@ -6,7 +6,7 @@ import Foundation
 /// - 三家并行刷新(打开即刷 / 30 分钟后台 / 手动即时都走同一入口);
 /// - 401 单请求重试一次 → 仍失败则凭据「失效」(与 networkError 分家);
 /// - networkError 连续失败 ≥3 轮 →「加载失败」,恢复即清除,失败不清缓存;
-/// - 跨入临界的通知边沿 + 24h 静默;
+/// - 跨入临界的通知边沿 + 24h 静默(到期家不发临界通知,#56);
 /// - 启动先发缓存快照,再后台刷新。
 public actor UsageEngine {
     private let credentials: CredentialStore
@@ -63,7 +63,8 @@ public actor UsageEngine {
             credentialReadFailures: credentialReadFailures,
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
-                evaluator: evaluator
+                evaluator: evaluator,
+                now: clock.now
             )
         )
     }
@@ -315,6 +316,15 @@ public actor UsageEngine {
             alert.usageCritical = false
             alerts[provider] = alert
             return [.usageRecovered(provider)]
+        }
+
+        // 到期家不发「已达临界」(#56):对一条不能用的额度报临界是纯噪音。
+        // 边沿照常消费(记 usageCritical)——续订翻回后停留临界不重发,与「跨入才
+        // 通知」的既有语义一致;恢复路径(临界→非临界)不受影响,照常复位。
+        if PlanState.evaluate(provider: provider, snapshot: snapshot, now: clock.now).isExpired {
+            alert.usageCritical = true
+            alerts[provider] = alert
+            return []
         }
 
         guard !alert.usageCritical else { return [] }  // 停留在临界不重复通知

@@ -55,7 +55,7 @@ struct EngineStateFreshInstallTests {
         // 与引擎同口径:overview 由快照现场推导(state 每次读取都重算,两者恒一致)。
         let state = EngineState(
             providers: [.deepseek: runtime(.deepseek, snapshot: snapshot)],
-            overview: GlobalOverview.compute(snapshots: [.deepseek: snapshot], evaluator: StatusEvaluator())
+            overview: GlobalOverview.compute(snapshots: [.deepseek: snapshot], evaluator: StatusEvaluator(), now: Fixture.epoch)
         )
         #expect(!state.isFreshInstall)
     }

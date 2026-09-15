@@ -41,7 +41,8 @@ struct IconAccessibilityLabelTests {
                     .kimi: PreviewData.kimi(weekRemaining: 66),
                     .deepseek: PreviewData.deepseek(total: "8.20"),
                 ],
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
         #expect(label(state) == "全局最紧剩余 5%,GLM 7 天窗;最差状态:GLM、DeepSeek 临界")
@@ -73,9 +74,55 @@ struct IconAccessibilityLabelTests {
             ],
             overview: GlobalOverview.compute(
                 snapshots: [.kimi: PreviewData.kimi(weekRemaining: 5)],
-                evaluator: StatusEvaluator()
+                evaluator: StatusEvaluator(),
+                now: Date()
             )
         )
         #expect(label(state) == "全局最紧剩余 5%,Kimi 周窗口;最差状态:临界")
+    }
+}
+
+/// 到期退出全局口径后的 a11y 承认(#56):到期家退出最紧/最差点名,但一行说明
+/// 补「已到期:」半句——退出口径的家在结论区无痕,用户就只能逐个 tab 找;
+/// 三家全到期时「—」必须讲清来历,不产生「是不是没联网」的歧义。
+@Suite("图标 a11y 的到期口径(#56)")
+struct IconAccessibilityExpiryTests {
+    private func label(_ state: EngineState) -> String {
+        IconAccessibilityPresentation(state: state).text
+    }
+
+    @Test("部分到期:最紧/最差由未到期家决定,尾部承认「已到期:」")
+    func partialExpiryAppendsAcknowledgement() {
+        #expect(label(PreviewData.glmExpiredState())
+            == "全局最紧剩余 66%,Kimi 周窗口;最差状态:全部正常;已到期:GLM")
+    }
+
+    @Test("三家全到期:一行讲清,不给「—」留歧义")
+    func allExpiredExplainsTheDash() {
+        #expect(label(PreviewData.allPlansExpiredState())
+            == "用量监视器,三家套餐均已到期")
+    }
+
+    @Test("到期家凭据失效:不点名(凭据问题优先于到期,归横幅)")
+    func expiredProviderWithInvalidCredentialIsNotNamed() {
+        let expiredValidity = PreviewData.validity(untilDays: -2, fromDays: -32)
+        let providers: [Provider: ProviderRuntimeState] = [
+            .glm: PreviewData.runtime(
+                .glm,
+                snapshot: PreviewData.glm(weeklyRemaining: 3_000, validity: expiredValidity),
+                credential: .invalid
+            ),
+            .kimi: PreviewData.runtime(.kimi, snapshot: PreviewData.kimi(weekRemaining: 66)),
+            .deepseek: PreviewData.runtime(.deepseek, snapshot: PreviewData.deepseek(total: "62.47")),
+        ]
+        let state = EngineState(
+            providers: providers,
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator(),
+                now: Date()
+            )
+        )
+        #expect(label(state) == "全局最紧剩余 66%,Kimi 周窗口;最差状态:全部正常")
     }
 }
