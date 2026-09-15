@@ -109,6 +109,9 @@ enum JSONReader {
 
 /// 原始响应原文:单分片即响应体本身,多分片按 `{"<part>": <原文>}` 拼接,
 /// 原文逐字保留(未知字段不丢),且从不包含请求头。
+///
+/// 哪些分片进原文由**解析器的显式白名单**决定(见 `GLMParser.rawParts`):
+/// 带账单元数据的分片只落派生字段,原文不进快照。
 enum RawResponses {
     /// 按给定顺序取出存在的分片原文(缺失分片不占位)。
     static func entries(from payload: ProviderPayload, parts: [FetchPart]) -> [(FetchPart, Data)] {

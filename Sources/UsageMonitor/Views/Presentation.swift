@@ -99,6 +99,15 @@ enum Presentation {
         return "\(max(1, Int(seconds / 60))) 分钟前更新"
     }
 
+    // MARK: - 套餐有效期(#53)
+
+    /// 有效期行末端的展示口径:MM-dd,按北京时间(+08:00)。
+    /// 有效期串本身按 +08:00 解析(见 `GLMParser.periodBounds`),展示若随系统时区走,
+    /// 跨时区机器上「有效期至」会差一天。
+    static func validityDate(_ validUntil: Date) -> String {
+        validityFormatter.string(from: validUntil)
+    }
+
     // MARK: - 域码展示名(P2-9,FC-6)
 
     /// 已知内部域码 → 展示名;未知值原样透传(展示层映射,不动解析层)。
@@ -127,6 +136,16 @@ enum Presentation {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_Hans_CN")
         formatter.dateFormat = "MM-dd HH:mm"
+        return formatter
+    }()
+
+    /// 套餐有效期专用:时区口径取自 Core 的 `PlanValidity.timeZone`(北京时间 +08:00,不随系统时区漂移)。
+    private static let validityFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = PlanValidity.timeZone
+        formatter.dateFormat = "MM-dd"
         return formatter
     }()
 }

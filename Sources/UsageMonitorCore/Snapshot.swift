@@ -7,7 +7,12 @@ public struct Snapshot: Codable, Equatable, Sendable {
     public var balances: [Balance]
     /// 近 7 天消耗:只在 provider 有直接用量数据源时非 nil(见 `RollingUsage`)。
     public var rollingUsage: RollingUsage?
-    /// 原始响应原文(不含任何请求头),未知字段不丢。
+    /// 套餐有效期:只在 provider 提供订阅记录时非 nil(见 `PlanValidity`)。
+    /// 该字段是后加的**可空字段**:旧缓存文件里缺省时解出为 nil(无有效期信息),
+    /// 不升 `SnapshotFileCodec.currentVersion`。
+    public var planValidity: PlanValidity?
+    /// 原始响应原文(不含任何请求头),未知字段不丢——但**只限白名单内的用量类分片**:
+    /// 账单类分片(如 GLM 订阅记录)不进此处,只落派生字段(见 `GLMParser.rawParts`)。
     public var raw: String
 
     public init(
@@ -15,12 +20,14 @@ public struct Snapshot: Codable, Equatable, Sendable {
         windows: [QuotaWindow],
         balances: [Balance],
         rollingUsage: RollingUsage? = nil,
+        planValidity: PlanValidity? = nil,
         raw: String
     ) {
         self.meta = meta
         self.windows = windows
         self.balances = balances
         self.rollingUsage = rollingUsage
+        self.planValidity = planValidity
         self.raw = raw
     }
 }

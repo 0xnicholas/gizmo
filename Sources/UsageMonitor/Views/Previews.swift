@@ -34,6 +34,7 @@ enum PreviewData {
     static func glm(
         rollingUsage: RollingUsage? = .value(amount: 7_500_000, unit: "tokens"),
         weeklyRemaining: Int = 15_929,
+        validity: PlanValidity? = PreviewData.validity(),
         fetchedAt: Date = PreviewData.freshFetchedAt()
     ) -> Snapshot {
         Snapshot(
@@ -44,7 +45,21 @@ enum PreviewData {
             ],
             balances: [],
             rollingUsage: rollingUsage,
+            planValidity: validity,
             raw: "{}"
+        )
+    }
+
+    /// 套餐有效期样例(#53):相对现在构造——区间盖住当下(常态「有效期至」行),
+    /// 具体日期随渲染时刻漂移,验收只断言模式(若需固定日期形态可传 offsets)。
+    static func validity(untilDays: Double = 30, fromDays: Double = -30) -> PlanValidity {
+        let now = Date()
+        return PlanValidity(
+            validFrom: now.addingTimeInterval(fromDays * 86_400),
+            validUntil: now.addingTimeInterval(untilDays * 86_400),
+            status: "VALID",
+            autoRenew: false,
+            productName: "GLM Coding Pro"
         )
     }
 

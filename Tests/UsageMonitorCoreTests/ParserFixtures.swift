@@ -57,6 +57,20 @@ enum ParserFixtures {
      "success":true}
     """
 
+    /// GLM `GET /api/biz/subscription/list` 实测形状(glm-subscription-source.md「端点规格」)。
+    /// 有效期串、`status`、`autoRenew`、商品名与 `currentPeriod` 逐字取自实测(按协议一条记录、周期就地递增);
+    /// `orderNo` / `customerId` / `agreementNo` / `payAmount` 是账单元数据类字段的形状示意
+    /// (实测存在此类字段,值已脱敏)——解析层必须把它们挡在派生字段与 raw 之外。
+    static let glmSubscription = """
+    {"code":200,"msg":"Operation successful","data":[
+      {"productName":"GLM Coding Pro","status":"VALID",
+       "valid":"2026-09-15 10:00:00-2026-10-15 10:00:00","autoRenew":0,
+       "currentPeriod":2,"billingCycle":"monthly","version":"V3",
+       "orderNo":"EXAMPLE-ORDER-0001","customerId":"EXAMPLE-CUSTOMER-0001",
+       "agreementNo":"EXAMPLE-AGREEMENT-0001","payAmount":"0.00"}
+     ],"success":true}
+    """
+
     /// GLM `/api/monitor/usage/model-usage`(日粒度,近 7 天桶;glm-coding-usage-source.md「端点规格 2」)。
     static let glmModelUsageDaily = """
     {"code":200,"data":{

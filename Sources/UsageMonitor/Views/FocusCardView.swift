@@ -105,6 +105,12 @@ struct FocusCardView: View {
             QuotaWindowRow(window: window, fromFailedSnapshot: runtime.loadFailed)
         }
 
+        // 套餐有效期(#53):只在拿到订阅记录时出现;分片失败 / 无订阅记录时该行干脆不出现,
+        // 其它字段与今天完全一致(静默退化)。
+        if let validity = snapshot.planValidity {
+            InfoRow(label: "有效期至", value: Presentation.validityDate(validity.validUntil))
+        }
+
         if provider == .deepseek {
             DeepSeekBalanceBlock(snapshot: snapshot)
         } else {

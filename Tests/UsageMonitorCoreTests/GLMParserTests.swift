@@ -213,3 +213,193 @@ struct GLMParserTests {
         #expect(!snapshot.raw.lowercased().contains("authorization"))
     }
 }
+
+/// 套餐有效期(#53):订阅分片 → `planValidity` 派生字段。
+///
+/// 口径(glm-subscription-source.md 实测):有效期串形如
+/// `yyyy-MM-dd HH:mm:ss-yyyy-MM-dd HH:mm:ss`,按北京时间(+08:00)解析;畸形串退回
+/// 「无有效期信息」而不报错;多条记录取覆盖 now 的那条,都不覆盖则取末端最晚者。
+/// 账单元数据(订单号/客户号/协议号/金额)既不落派生字段也不进 raw。
+@Suite("GLM 套餐有效期(订阅分片)")
+struct GLMSubscriptionTests {
+    let parser = GLMParser()
+
+    /// 注入时刻 = 2026-09-16 10:00(+08:00),落在实测的本期区间内(独立换算的 epoch 字面量)。
+    private static let insidePeriod = Date(timeIntervalSince1970: 1_789_524_000)
+    /// 实测区间端点:2026-09-15 10:00:00+08:00 / 2026-10-15 10:00:00+08:00。
+    private static let periodStart = 1_789_437_600.0
+    private static let periodEnd = 1_792_029_600.0
+
+    private func parse(_ payload: ProviderPayload, now: Date = Self.insidePeriod) throws -> Snapshot {
+        try parser.parse(payload: payload, fetchedAt: now)
+    }
+
+    /// 额度主分片 + 订阅分片(实测形状)。
+    private func withSubscription(_ body: String = ParserFixtures.glmSubscription) -> ProviderPayload {
+        .ok(ParserFixtures.glmQuota).merging(.ok(body, part: .subscription))
+    }
+
+    @Test("有效期起止按北京时间解析;status / autoRenew / productName 原样透传")
+    func parsesValidityInBeijingTime() throws {
+        let snapshot = try parse(withSubscription())
+
+        let validity = try #require(snapshot.planValidity)
+        #expect(validity.validFrom == Date(timeIntervalSince1970: Self.periodStart))
+        #expect(validity.validUntil == Date(timeIntervalSince1970: Self.periodEnd))
+        #expect(validity.status == "VALID")
+        #expect(validity.autoRenew == false)
+        #expect(validity.productName == "GLM Coding Pro")
+        // 卡片其它字段完全不受影响
+        #expect(snapshot.planWindows.count == 2)
+        #expect(snapshot.meta.plan == Plan(level: "pro"))
+    }
+
+    @Test("响应含多条记录:取覆盖 now 的那条(不是末端最晚的那条)")
+    func picksRecordCoveringNow() throws {
+        let body = """
+        {"code":200,"data":[
+          {"productName":"GLM Coding Lite","status":"VALID","valid":"2026-08-15 10:00:00-2026-09-15 10:00:00","autoRenew":0},
+          {"productName":"GLM Coding Pro","status":"VALID","valid":"2026-09-15 10:00:00-2026-10-15 10:00:00","autoRenew":0},
+          {"productName":"GLM Coding Pro","status":"VALID","valid":"2026-10-15 10:00:00-2026-11-15 10:00:00","autoRenew":1}
+        ],"success":true}
+        """
+        let snapshot = try parse(withSubscription(body))
+
+        #expect(snapshot.planValidity?.validUntil == Date(timeIntervalSince1970: Self.periodEnd))
+        #expect(snapshot.planValidity?.productName == "GLM Coding Pro")
+        #expect(snapshot.planValidity?.autoRenew == false)
+    }
+
+    @Test("都不覆盖 now:取末端最晚者(已断供时露出最近一期,由到期判定接手)")
+    func picksLatestEndWhenNoneCovers() throws {
+        let body = """
+        {"code":200,"data":[
+          {"status":"VALID","valid":"2026-07-15 10:00:00-2026-08-15 10:00:00","autoRenew":0},
+          {"status":"VALID","valid":"2026-08-15 10:00:00-2026-09-15 10:00:00","autoRenew":0}
+        ],"success":true}
+        """
+        let snapshot = try parse(withSubscription(body))
+        #expect(snapshot.planValidity?.validUntil == Date(timeIntervalSince1970: Self.periodStart))
+        // 该条记录没有 productName / autoRenew 细节字段时保持 nil,不编造
+        #expect(snapshot.planValidity?.productName == nil)
+        #expect(snapshot.planValidity?.status == "VALID")
+    }
+
+    @Test("覆盖判定边界:now == 起刻算覆盖;now == 末端不算(下一期接手)")
+    func coveringBoundaries() throws {
+        let atStart = try parse(withSubscription())
+        #expect(atStart.planValidity?.validUntil == Date(timeIntervalSince1970: Self.periodEnd))
+
+        // 两期首尾相接:now 恰在衔接点 → 归下一期(到期当刻失效的口径一致)
+        let body = """
+        {"code":200,"data":[
+          {"valid":"2026-09-15 10:00:00-2026-10-15 10:00:00","autoRenew":0},
+          {"valid":"2026-10-15 10:00:00-2026-11-15 10:00:00","autoRenew":1}
+        ],"success":true}
+        """
+        let atEnd = try parse(withSubscription(body), now: Date(timeIntervalSince1970: Self.periodEnd))
+        #expect(atEnd.planValidity?.validUntil == Date(timeIntervalSince1970: 1_794_708_000))
+        #expect(atEnd.planValidity?.autoRenew == true)
+    }
+
+    @Test("畸形有效期串退回「无有效期信息」:不报错、不猜、其它字段照常")
+    func malformedPeriodDegradesSilently() throws {
+        let malformed = [
+            "2026-09-15 10:00:00",                          // 只有起刻
+            "2026-09-15 10:00:00-2026-10-15T10:00:00",      // 带时区后缀/T 的形态(本期不做容错)
+            "2026-09-15 10:00:00-2026-09-15 09:00:00",      // 末端早于起刻
+            "2026-13-45 10:00:00-2026-10-15 10:00:00",      // 非法月日
+            "not-a-period",
+            "",
+        ]
+        for raw in malformed {
+            let body = #"{"code":200,"data":[{"status":"VALID","valid":"\#(raw)","autoRenew":0}],"success":true}"#
+            let snapshot = try parse(withSubscription(body))
+            #expect(snapshot.planValidity == nil, "畸形串 \(raw) 应退回无有效期信息")
+            #expect(snapshot.planWindows.count == 2, "畸形串 \(raw) 不应牵连额度字段")
+        }
+    }
+
+    @Test("记录缺 valid / valid 非字符串 → 该条跳过;有可用记录时仍取之")
+    func skipsRecordsWithoutValid() throws {
+        let body = """
+        {"code":200,"data":[
+          {"status":"VALID"},
+          {"valid":12345,"autoRenew":0},
+          {"status":"VALID","valid":"2026-09-15 10:00:00-2026-10-15 10:00:00","autoRenew":1}
+        ],"success":true}
+        """
+        let snapshot = try parse(withSubscription(body))
+        #expect(snapshot.planValidity?.validUntil == Date(timeIntervalSince1970: Self.periodEnd))
+    }
+
+    @Test("首尾空白不构成畸形串(空白不属语义);内容仍须是完整定宽区间")
+    func toleratesPaddingButNotPartialContent() throws {
+        let padded = try parse(withSubscription(#"{"code":200,"data":[{"valid":"  2026-09-15 10:00:00-2026-10-15 10:00:00\n"}],"success":true}"#))
+        #expect(try #require(padded.planValidity).validUntil == Date(timeIntervalSince1970: Self.periodEnd))
+    }
+
+    @Test("autoRenew 只认 0/1:未知取值退回 nil(不猜)")
+    func autoRenewIsNotGuessed() throws {
+        let body = #"{"code":200,"data":[{"valid":"2026-09-15 10:00:00-2026-10-15 10:00:00","autoRenew":2}],"success":true}"#
+        #expect(try parse(withSubscription(body)).planValidity?.autoRenew == nil)
+
+        let boolean = #"{"code":200,"data":[{"valid":"2026-09-15 10:00:00-2026-10-15 10:00:00","autoRenew":true}],"success":true}"#
+        #expect(try parse(withSubscription(boolean)).planValidity?.autoRenew == true)
+    }
+
+    @Test("无订阅记录 / data 非数组 / data 缺失 → 无有效期信息")
+    func absentRecordsDegradeSilently() throws {
+        for body in [
+            #"{"code":200,"data":[],"success":true}"#,
+            #"{"code":200,"data":{},"success":true}"#,
+            #"{"code":200,"success":true}"#,
+            #"{}"#,
+        ] {
+            #expect(try parse(withSubscription(body)).planValidity == nil, "\(body) 应退回无有效期信息")
+        }
+    }
+
+    @Test("订阅分片失败 / 非 200 / 业务错误 → 该行不出现,额度与近 7 天消耗照常")
+    func shardFailureDegradesToTodaysShape() throws {
+        let broken: [(String, ProviderPayload)] = [
+            ("传输失败", .failure(.transport("timeout"), part: .subscription)),
+            ("HTTP 500", .response("{}", part: .subscription, statusCode: 500)),
+            ("业务错误", .ok(#"{"code":500,"msg":"Internal error","success":false}"#, part: .subscription)),
+            ("响应体不是 JSON", .ok("not json", part: .subscription)),
+        ]
+        for (name, payload) in broken {
+            let snapshot = try parse(.ok(ParserFixtures.glmQuota)
+                .merging(.ok(ParserFixtures.glmModelUsageDaily, part: .rollingUsage))
+                .merging(payload))
+            #expect(snapshot.planValidity == nil, "\(name) 应退回无有效期信息")
+            #expect(snapshot.planWindows.count == 2, "\(name) 不应牵连额度字段")
+            #expect(snapshot.rollingUsage == .value(amount: 7_500_000, unit: "tokens"), "\(name) 不应牵连近 7 天消耗")
+        }
+    }
+
+    @Test("未请求订阅分片 → 无有效期信息(该行不渲染)")
+    func absentShardIsNil() throws {
+        #expect(try parse(.ok(ParserFixtures.glmQuota)).planValidity == nil)
+    }
+
+    @Test("raw 白名单:订阅分片原文不进 raw,只留派生字段")
+    func subscriptionStaysOutOfRaw() throws {
+        let snapshot = try parse(withSubscription())
+
+        #expect(snapshot.raw == ParserFixtures.glmQuota)
+        for leaked in ["subscription", "orderNo", "customerId", "agreementNo", "payAmount", "EXAMPLE-ORDER-0001"] {
+            #expect(!snapshot.raw.contains(leaked), "raw 不应含订阅分片痕迹:\(leaked)")
+        }
+        // 白名单内的派生字段照常落快照
+        #expect(snapshot.planValidity?.productName == "GLM Coding Pro")
+    }
+
+    @Test("派生字段不含账单元数据:PlanValidity 只有有效期/status/autoRenew/productName")
+    func validityCarriesNoBillingMetadata() throws {
+        let snapshot = try parse(withSubscription())
+        let validity = try #require(snapshot.planValidity)
+        let fields = Mirror(reflecting: validity).children.compactMap(\.label).sorted()
+        #expect(fields == ["autoRenew", "productName", "status", "validFrom", "validUntil"])
+    }
+}

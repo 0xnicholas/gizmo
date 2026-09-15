@@ -7,7 +7,7 @@ import UsageMonitorCore
 /// |---|---|---|---|
 /// | DeepSeek | `GET api.deepseek.com/user/balance` | `Authorization: Bearer <key>` | 8s |
 /// | Kimi for Coding | `GET api.kimi.com/coding/v1/usages` + `/me` | `Bearer <token>` | 8s |
-/// | GLM Coding Plan | `GET open.bigmodel.cn/api/monitor/usage/quota/limit` + `/model-usage` | `Authorization: <裸 key>` | 10s |
+/// | GLM Coding Plan | `GET open.bigmodel.cn/api/monitor/usage/quota/limit` + `/model-usage` + `/api/biz/subscription/list` | `Authorization: <裸 key>` | 10s |
 ///
 /// 解析集中封装在 UsageMonitorCore(单一改点);此层只发请求、带回状态码与响应体。
 enum Endpoints {
@@ -16,6 +16,8 @@ enum Endpoints {
     static let kimiProfile = URL(string: "https://api.kimi.com/coding/v1/me")!
     static let glmQuota = URL(string: "https://open.bigmodel.cn/api/monitor/usage/quota/limit")!
     static let glmModelUsage = URL(string: "https://open.bigmodel.cn/api/monitor/usage/model-usage")!
+    /// 订阅记录(套餐有效期):非官方文档接口,实测与套餐调用同一把 key(见 docs/research/glm-subscription-source.md)。
+    static let glmSubscription = URL(string: "https://open.bigmodel.cn/api/biz/subscription/list")!
 }
 
 /// 薄 HTTP 客户端:每个请求现设超时;响应体原样返回。
@@ -119,7 +121,15 @@ struct GLMFetcher: ProviderFetching {
         // 近 7 天消耗是附加分片:取不到时归为 .failed,卡片该行显示「— 获取失败」,其余额度照常。
         let rolling = await http.optional(.rollingUsage, url: rollingUsageURL(), headers: headers, timeout: 10)
 
-        return ProviderPayload(parts: [.primary: .response(primary), .rollingUsage: rolling])
+        // 订阅记录(套餐有效期)是附加分片:取不到时无有效期信息(该行不出现),其余额度照常。
+        // 该分片带账单元数据,原文不进 raw——解析层只留派生字段(见 GLMParser)。
+        let subscription = await http.optional(.subscription, url: Endpoints.glmSubscription, headers: headers, timeout: 10)
+
+        return ProviderPayload(parts: [
+            .primary: .response(primary),
+            .rollingUsage: rolling,
+            .subscription: subscription,
+        ])
     }
 
     /// 自然滚动 7 天窗口(近 7 天消耗的唯一口径)。

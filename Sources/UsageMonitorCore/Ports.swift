@@ -28,6 +28,9 @@ public enum FetchPart: String, Codable, Sendable {
     case primary
     /// GLM 近 7 天消耗时序(`/model-usage`)。
     case rollingUsage
+    /// GLM 订阅记录(`/api/biz/subscription/list`):有效期、自动续订与商品名。
+    /// 该分片带账单元数据,原文**不进 raw**,只落派生字段(见 `GLMParser` 与 CONTEXT「raw 原文」)。
+    case subscription
     /// Kimi 账户资料(`/coding/v1/me`):套餐元信息。
     case profile
 }

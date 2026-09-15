@@ -499,6 +499,15 @@ enum SmokeRunner {
         } else {
             lines.append("近 7 天消耗:—(该家无直接来源,不渲染)")
         }
+        // 套餐有效期(#53):只打印派生字段——订阅响应里的账单类字段一概不进此描述。
+        if let validity = snapshot.planValidity {
+            let renew = validity.autoRenew.map { $0 ? "自动续订" : "不自动续订" } ?? "续订未知"
+            let name = validity.productName ?? "—"
+            lines.append("套餐有效期:\(Self.iso.string(from: validity.validFrom)) → \(Self.iso.string(from: validity.validUntil))"
+                + "(status=\(validity.status ?? "—"),\(renew),商品=\(name))")
+        } else {
+            lines.append("套餐有效期:—(无来源/分片失败/无记录,不渲染该行)")
+        }
         lines.append("status:\(StatusEvaluator(thresholds: Thresholds()).status(for: snapshot))")
         return lines
     }

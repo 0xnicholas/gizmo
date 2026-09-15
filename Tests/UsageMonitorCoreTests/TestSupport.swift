@@ -39,6 +39,7 @@ enum Fixture {
         windows: [QuotaWindow] = [],
         balances: [Balance] = [],
         rollingUsage: RollingUsage? = nil,
+        planValidity: PlanValidity? = nil,
         plan: Plan? = nil,
         fetchedAt: Date = Fixture.epoch,
         concurrencyLimit: Int? = nil,
@@ -56,7 +57,25 @@ enum Fixture {
             windows: windows,
             balances: balances,
             rollingUsage: rollingUsage,
+            planValidity: planValidity,
             raw: raw
+        )
+    }
+
+    /// 套餐有效期样例:默认取实测区间(2026-09-15 10:00 → 2026-10-15 10:00, +08:00)。
+    static func validity(
+        validFrom: Date = Date(timeIntervalSince1970: 1_789_437_600),
+        validUntil: Date = Date(timeIntervalSince1970: 1_792_029_600),
+        status: String? = "VALID",
+        autoRenew: Bool? = false,
+        productName: String? = "GLM Coding Pro"
+    ) -> PlanValidity {
+        PlanValidity(
+            validFrom: validFrom,
+            validUntil: validUntil,
+            status: status,
+            autoRenew: autoRenew,
+            productName: productName
         )
     }
 
