@@ -84,3 +84,48 @@ public protocol SnapshotCache: Sendable {
 public protocol Clock: Sendable {
     var now: Date { get }
 }
+
+/// 到期提醒的静默键(#57):值 = **已经提醒过的那条有效期端点**(不是时间戳)。
+/// 同一个端点只提醒一次,改系统时间或重启都不会重复打扰;续订(端点推后)后
+/// 端点一变、比较自然失配,静默键随之复位。
+public struct PlanExpirySilenceKeys: Codable, Equatable, Sendable {
+    /// 已就哪个有效期端点发过「即将到期」(nil = 还没发过)。
+    public var approaching: Date?
+    /// 已就哪个有效期端点发过「已到期」。
+    public var expired: Date?
+
+    public init(approaching: Date? = nil, expired: Date? = nil) {
+        self.approaching = approaching
+        self.expired = expired
+    }
+}
+
+/// 静默键的存取端口:重启不重复打扰靠它的持久化(App 侧落 UserDefaults,
+/// 测试/冒烟用内存实现)。读不到按「无记录」处理——方向偏「可能多提醒一次」,
+/// 而不是「静默失效、再也不提醒」。
+public protocol PlanExpirySilenceKeyStore: Sendable {
+    func load() -> [Provider: PlanExpirySilenceKeys]
+    func save(_ keys: [Provider: PlanExpirySilenceKeys])
+}
+
+/// 不跨进程存活的内存实现(测试与冒烟用;不碰真实用户的上次提醒记录)。
+public final class InMemoryPlanExpirySilenceKeyStore: PlanExpirySilenceKeyStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var keys: [Provider: PlanExpirySilenceKeys]
+
+    public init(keys: [Provider: PlanExpirySilenceKeys] = [:]) {
+        self.keys = keys
+    }
+
+    public func load() -> [Provider: PlanExpirySilenceKeys] {
+        lock.lock()
+        defer { lock.unlock() }
+        return keys
+    }
+
+    public func save(_ keys: [Provider: PlanExpirySilenceKeys]) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.keys = keys
+    }
+}

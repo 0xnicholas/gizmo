@@ -7,6 +7,7 @@ import Foundation
 /// - 401 单请求重试一次 → 仍失败则凭据「失效」(与 networkError 分家);
 /// - networkError 连续失败 ≥3 轮 →「加载失败」,恢复即清除,失败不清缓存;
 /// - 跨入临界的通知边沿 + 24h 静默(到期家不发临界通知,#56);
+/// - 到期提醒三类的边沿 + 静默键(键 = 有效期端点本身,#57);
 /// - 启动先发缓存快照,再后台刷新。
 public actor UsageEngine {
     private let credentials: CredentialStore
@@ -14,11 +15,15 @@ public actor UsageEngine {
     private let parsers: [Provider: any ProviderParser]
     private let cache: SnapshotCache
     private let clock: Clock
+    private let silenceKeyStore: any PlanExpirySilenceKeyStore
     public let thresholds: Thresholds
     private let evaluator: StatusEvaluator
 
     private var providers: [Provider: ProviderRuntimeState]
     private var alerts: [Provider: AlertState]
+    /// 到期提醒的静默键(每 provider 一枚,值 = 已提醒过的有效期端点):从
+    /// `silenceKeyStore` 读入、变动即写回,重启后接着算。
+    private var planExpirySilenceKeys: [Provider: PlanExpirySilenceKeys]
     private var lastRefreshStartedAt: Date?
     private var lastRefreshFinishedAt: Date?
     private var isRefreshing = false
@@ -39,6 +44,7 @@ public actor UsageEngine {
         parsers: [Provider: any ProviderParser],
         cache: SnapshotCache,
         clock: Clock,
+        silenceKeys: any PlanExpirySilenceKeyStore,
         thresholds: Thresholds = Thresholds()
     ) {
         self.credentials = credentials
@@ -46,10 +52,12 @@ public actor UsageEngine {
         self.parsers = parsers
         self.cache = cache
         self.clock = clock
+        self.silenceKeyStore = silenceKeys
         self.thresholds = thresholds
         self.evaluator = StatusEvaluator(thresholds: thresholds)
         self.providers = Dictionary(uniqueKeysWithValues: Provider.allCases.map { ($0, ProviderRuntimeState(provider: $0)) })
         self.alerts = Dictionary(uniqueKeysWithValues: Provider.allCases.map { ($0, AlertState()) })
+        self.planExpirySilenceKeys = silenceKeys.load()
     }
 
     // MARK: - 只读状态
@@ -107,6 +115,9 @@ public actor UsageEngine {
                 events.append(.snapshotUpdated(provider))
             }
             providers[provider] = state
+            // 启动即首次观察:缓存里的有效期已经到期/临近到期时当刻提醒一次
+            // (重启不重复靠静默键去重,不靠不求值)。
+            events.append(contentsOf: planExpiryEvents(provider, now: clock.now))
         }
         return events
     }
@@ -277,6 +288,7 @@ public actor UsageEngine {
         try? cache.saveSnapshot(snapshot)
 
         events.append(contentsOf: usageAlertEvents(provider, snapshot: snapshot, status: state.status))
+        events.append(contentsOf: planExpiryEvents(provider, now: clock.now))
         return events
     }
 
@@ -377,6 +389,78 @@ public actor UsageEngine {
             return .balance(amount: snapshot.totalBalance(currency: currency), currency: currency)
         }
         return nil
+    }
+
+    // MARK: - 到期提醒边沿与静默键(#57)
+
+    /// 三类到期提醒的边沿判定。静默键是**有效期端点本身**(不是时间戳):同一个端点
+    /// 只提醒一次(改系统时间/重启都不重复),端点一变(续订推后)比较自然失配、重新计时。
+    ///
+    /// 只在快照安装处求值(start 的缓存发布 + 刷新成功):失败轮不重复求值,通知最多滞后到
+    /// 下一次成功刷新或下次启动——断言与「最后成功数据」同期,不拿很旧的依据报「刚到期」。
+    /// 凭据非 `configured` 的家不做到期断言(凭据问题优先于到期,#54 的呈现口径同款)。
+    private func planExpiryEvents(_ provider: Provider, now: Date) -> [EngineEvent] {
+        guard providers[provider]?.credential == .configured else { return [] }
+        // 有效期是 autoRenew 的唯一事实来源(PlanState.active 也带它,但 expired 不带
+        // ——两处取同一个快照字段,不分叉)。
+        let validity = providers[provider]?.snapshot?.planValidity
+
+        switch PlanState.evaluate(provider: provider, snapshot: providers[provider]?.snapshot, now: now) {
+        case .unknown:
+            return []
+
+        case .expired(_, let validUntil, _):
+            var keys = planExpirySilenceKeys[provider] ?? PlanExpirySilenceKeys()
+            guard keys.expired != validUntil else { return [] }
+            keys.expired = validUntil
+            installSilenceKeys(keys, for: provider)
+            return [.planExpiry(PlanExpiryNotice(
+                provider: provider,
+                validUntil: validUntil,
+                autoRenew: validity?.autoRenew,
+                kind: .expired
+            ))]
+
+        case .active(_, let validUntil, _, _):
+            var keys = planExpirySilenceKeys[provider] ?? PlanExpirySilenceKeys()
+            var events: [EngineEvent] = []
+
+            // 到期 → 续订翻回:曾就**另一条**端点宣告过到期,现在又活了 → 一条「已恢复」;
+            // 静默键随新端点复位(旧端点的账不挂到新端点上)。
+            if let expiredEndpoint = keys.expired, expiredEndpoint != validUntil {
+                keys = PlanExpirySilenceKeys()
+                events.append(.planExpiry(PlanExpiryNotice(
+                    provider: provider,
+                    validUntil: validUntil,
+                    autoRenew: validity?.autoRenew,
+                    kind: .renewed
+                )))
+            }
+
+            let approaching = PlanExpiryNotice.isApproaching(
+                validUntil: validUntil,
+                now: now,
+                reminderDays: thresholds.expiryReminderDays
+            )
+            if approaching, keys.approaching != validUntil {
+                keys.approaching = validUntil
+                events.append(.planExpiry(PlanExpiryNotice(
+                    provider: provider,
+                    validUntil: validUntil,
+                    autoRenew: validity?.autoRenew,
+                    kind: .approaching(daysRemaining: PlanExpiryNotice.remainingDays(until: validUntil, now: now))
+                )))
+            }
+
+            guard !events.isEmpty else { return [] }
+            installSilenceKeys(keys, for: provider)
+            return events
+        }
+    }
+
+    private func installSilenceKeys(_ keys: PlanExpirySilenceKeys, for provider: Provider) {
+        planExpirySilenceKeys[provider] = keys
+        silenceKeyStore.save(planExpirySilenceKeys)
     }
 
     // MARK: - 工具

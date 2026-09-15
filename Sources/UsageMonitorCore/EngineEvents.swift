@@ -17,6 +17,8 @@ public enum EngineEvent: Equatable, Sendable {
     case loadFailed(Provider, lastSuccessAt: Date?)
     /// 从「加载失败」态恢复。
     case loadRecovered(Provider)
+    /// 套餐到期提醒(#57,三类见 `PlanExpiryNotice.Kind`;静默键 = 有效期端点)。
+    case planExpiry(PlanExpiryNotice)
 
     public var provider: Provider {
         switch self {
@@ -29,6 +31,8 @@ public enum EngineEvent: Equatable, Sendable {
             return provider
         case .usageCritical(let alert):
             return alert.provider
+        case .planExpiry(let notice):
+            return notice.provider
         }
     }
 }

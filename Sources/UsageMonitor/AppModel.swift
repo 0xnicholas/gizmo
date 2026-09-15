@@ -96,6 +96,7 @@ final class AppModel: ObservableObject {
             ],
             cache: FileSnapshotCache(),
             clock: clock,
+            silenceKeys: UserDefaultsPlanExpirySilenceKeyStore(defaults: defaults),
             thresholds: thresholds
         )
 
@@ -140,8 +141,9 @@ final class AppModel: ObservableObject {
         isRefreshing = refreshing
     }
 
-    /// DEBUG 手动验收(C4,#42):--debug-test-notifications <秒> 启动后周期发测试临界通知,
-    /// 供人工核对「popover/设置窗口可见 → 无横幅无声音、仅通知中心;不可见 → 横幅 + 声音」。
+    /// DEBUG 手动验收(C4,#42 / #57):--debug-test-notifications <秒> 启动后周期发测试通知,
+    /// 四类轮转(临界 / 即将到期 / 已到期 / 已恢复),供人工核对文案、点击直达与
+    /// 「popover/设置窗口可见 → 无横幅无声音、仅通知中心;不可见 → 横幅 + 声音」。
     /// identifier 带序号互不顶掉,通知中心可累积对照。发布构建无此入口。
     func startDebugTestNotifications(every interval: TimeInterval) {
         debugNotificationTask?.cancel()
@@ -151,7 +153,7 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard let self else { return }
                 sequence += 1
-                self.presenter.debugPostTestCritical(sequence: sequence)
+                self.presenter.debugPostTestNotification(sequence: sequence)
             }
         }
     }
@@ -239,6 +241,8 @@ final class AppModel: ObservableObject {
                 presenter.post(usageCritical: alert)
             case .credentialInvalid(let provider):
                 presenter.post(credentialInvalid: provider)
+            case .planExpiry(let notice):
+                presenter.post(planExpiry: notice)
             case .snapshotUpdated, .usageRecovered, .credentialRestored, .loadFailed, .loadRecovered:
                 break
             }

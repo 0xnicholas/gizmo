@@ -248,7 +248,8 @@ struct EngineHarness {
         credentials credentialValues: [Provider: String] = [.deepseek: "sk-ds", .kimi: "kimi-token", .glm: "glm-key"],
         payloads: [Provider: ProviderPayload] = [:],
         activeProviders: Set<Provider>? = nil,
-        clock: TestClock = TestClock()
+        clock: TestClock = TestClock(),
+        silenceKeys: any PlanExpirySilenceKeyStore = InMemoryPlanExpirySilenceKeyStore()
     ) {
         let clock = clock
         let credentials = FakeCredentialStore(values: credentialValues)
@@ -281,6 +282,7 @@ struct EngineHarness {
             parsers: parsers,
             cache: cache,
             clock: clock,
+            silenceKeys: silenceKeys,
             thresholds: thresholds
         )
     }
@@ -295,7 +297,21 @@ extension EngineEvent {
         switch self {
         case .usageCritical: return "usage"
         case .credentialInvalid: return "credential"
+        case .planExpiry: return "plan"
         default: return nil
         }
+    }
+
+    /// 到期提醒事件(#57)的载荷。
+    var planNotice: PlanExpiryNotice? {
+        if case .planExpiry(let notice) = self { return notice }
+        return nil
+    }
+}
+
+extension Array where Element == EngineEvent {
+    /// 本轮事件里的到期提醒(三类同型,按事件序)。
+    var planNotices: [PlanExpiryNotice] {
+        compactMap(\.planNotice)
     }
 }

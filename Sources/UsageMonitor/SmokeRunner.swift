@@ -346,7 +346,9 @@ enum SmokeRunner {
             }),
             parsers: [ .deepseek: DeepSeekParser(), .kimi: KimiParser(), .glm: GLMParser() ],
             cache: FileSnapshotCache(),
-            clock: clock
+            clock: clock,
+            // 冒烟不落静默键:真实用户的上次提醒记录不被一次冒烟运行改写。
+            silenceKeys: InMemoryPlanExpirySilenceKeyStore()
         )
     }
 
@@ -530,6 +532,7 @@ enum SmokeRunner {
         case .usageRecovered(let provider): return "usageRecovered(\(provider.rawValue))"
         case .loadFailed(let provider, _): return "loadFailed(\(provider.rawValue))"
         case .loadRecovered(let provider): return "loadRecovered(\(provider.rawValue))"
+        case .planExpiry(let notice): return "planExpiry(\(notice.provider.rawValue), \(notice.kind))"
         }
     }
 

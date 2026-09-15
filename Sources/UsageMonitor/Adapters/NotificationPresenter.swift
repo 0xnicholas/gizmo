@@ -12,7 +12,8 @@ private enum NotificationKey {
     static let kind = "kind"
 }
 
-/// 点击通知的直达语义:临界 → popover 聚焦该家;凭据失效 → 设置窗口选中该家。
+/// 点击通知的直达语义:临界 → popover 聚焦该家;凭据失效 → 设置窗口选中该家;
+/// 到期提醒三类(#57)复用临界那条直达路径(聚焦该家焦点卡 + 尽力展开 popover)。
 enum NotificationRoute: Equatable, Sendable {
     case usage(Provider)
     case credential(Provider)
@@ -79,11 +80,36 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
         )
     }
 
+    /// 套餐到期提醒三类:即将到期 / 已到期 / 已恢复(#57)。静默键已在引擎内按
+    /// 有效期端点去重;点击直达复用 `.usage`(与临界同款:聚焦该家焦点卡);
+    /// 同屏不打扰沿用 willPresent 的既有口径(与其他通知同一系统通道)。
+    func post(planExpiry notice: PlanExpiryNotice) {
+        post(
+            identifier: notice.notificationIdentifier,
+            title: notice.title,
+            body: notice.text,
+            route: .usage(notice.provider)
+        )
+    }
+
     #if DEBUG
-    /// DEBUG 验收入口(C4,#42):发一条可区分的测试临界通知;文案与点击路由复用生产路径
-    /// (UsageAlert.text / notificationIdentifier + 序号后缀,通知中心可累积对照)。
-    /// 仅供 --debug-test-notifications 使用。
-    func debugPostTestCritical(sequence: Int) {
+    /// DEBUG 验收入口(C4,#42 / #57):四类轮转发测试通知——用量临界 / 套餐即将到期 /
+    /// 套餐已到期 / 套餐已恢复;文案与点击路由复用生产路径(identifier 追加序号,
+    /// 通知中心可累积对照)。仅供 --debug-test-notifications 使用。
+    func debugPostTestNotification(sequence: Int) {
+        switch (sequence - 1) % 4 {
+        case 0:
+            debugPostTestCritical(sequence: sequence)
+        case 1:
+            debugPostTestPlanExpiry(kind: .approaching(daysRemaining: 3), validUntil: Date().addingTimeInterval(3 * 86_400), sequence: sequence)
+        case 2:
+            debugPostTestPlanExpiry(kind: .expired, validUntil: Date().addingTimeInterval(-3_600), sequence: sequence)
+        default:
+            debugPostTestPlanExpiry(kind: .renewed, validUntil: Date().addingTimeInterval(30 * 86_400), sequence: sequence)
+        }
+    }
+
+    private func debugPostTestCritical(sequence: Int) {
         let alert = UsageAlert(
             provider: .glm,
             basis: .window(label: "7 天窗", remaining: 42, limit: 1000, unit: "积分", percent: 4)
@@ -93,6 +119,16 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
             title: "用量临界(测试 \(sequence))",
             body: alert.text,
             route: .usage(alert.provider)
+        )
+    }
+
+    private func debugPostTestPlanExpiry(kind: PlanExpiryNotice.Kind, validUntil: Date, sequence: Int) {
+        let notice = PlanExpiryNotice(provider: .glm, validUntil: validUntil, autoRenew: false, kind: kind)
+        post(
+            identifier: "\(notice.notificationIdentifier)-debug-\(sequence)",
+            title: "\(notice.title)(测试 \(sequence))",
+            body: notice.text,
+            route: .usage(notice.provider)
         )
     }
     #endif

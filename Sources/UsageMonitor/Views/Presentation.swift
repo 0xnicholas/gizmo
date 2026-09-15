@@ -133,13 +133,15 @@ enum Presentation {
     /// 到期档文案:卡头状态位与 tab 速览共用同一常量,两处不打架。
     static let planExpiredLabel = "已到期"
 
-    /// 「(剩 N 天)」:有效期剩余 ≤ 提醒天数时补在「有效期至」行末;N 向上取整
-    /// (0.5 天 → 剩 1 天,不出现「剩 0 天」)。已到期或剩余超窗 → nil——后缀只服务
-    /// 「即将到期」的**文本**,没有界面态,不引入第四种状态色。
+    /// 「(剩 N 天)」:有效期剩余 ≤ 提醒天数时补在「有效期至」行末。已到期或剩余超窗
+    /// → nil——后缀只服务「即将到期」的**文本**,没有界面态,不引入第四种状态色。
+    /// 窗判定与天数口径都取自 Core(`PlanExpiryNotice.isApproaching` / `remainingDays`):
+    /// 卡上行后缀与 #57 的到期通知文案是同一句话的两处落点,公式只此一份。
     static func expiringSoonSuffix(validUntil: Date, now: Date, reminderDays: Int) -> String? {
-        let remaining = validUntil.timeIntervalSince(now)
-        guard remaining > 0, remaining <= Double(reminderDays) * 86_400 else { return nil }
-        return "(剩 \(Int(ceil(remaining / 86_400))) 天)"
+        guard PlanExpiryNotice.isApproaching(validUntil: validUntil, now: now, reminderDays: reminderDays) else {
+            return nil
+        }
+        return "(剩 \(PlanExpiryNotice.remainingDays(until: validUntil, now: now)) 天)"
     }
 
     /// 到期结论的陈旧归属:「(有效期数据来自 MM-dd HH:mm)」。观测时刻距 now 超过阈值
