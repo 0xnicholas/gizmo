@@ -176,3 +176,20 @@
 5. **验收形态**:三档(OCR 可断言 / swift test / 人工 PNG),见文首「验收工具约定」。
 6. **越线确认**:无条目需另立地图。唯一越线项(临界发现时机受 30 分钟轮询约束 = 改引擎策略)审计时已判死存档。
 7. **ADR 判否**:全部条目为可逆呈现层变更(改回即回),不满足「难以逆转」门槛;#11 口径修订记录于本文件与 #30 决议评论,不立 ADR。
+
+## 后续修订
+
+### #59:菜单栏图标改 Kimi 常驻口径
+
+- **改法**:菜单栏图标不再消费「全局最紧」口径——数字恒为 Kimi 全部 plan-window 中剩余占比
+  最低者的剩余 %,颜色随 Kimi 自身 status;Kimi 凭据问题(未配置 / 失效 / 读取失败)或套餐到期
+  (含 #58 手动标记)时不显数字,一律灰「—」,来历由图标 a11y 一行说明与 tooltip 讲清。
+- **波及**:P2-3(口径乙)的**图标半句**作废——菜单栏不再有「谁最紧显示谁」与 DeepSeek-only
+  彩色「—」;口径乙(颜色随数字 / 彩色「—」)原样退居 popover 总览条
+  (`GlobalPercentPresentation`,`GlobalOverview.tightestPercent`)。P0-3(IC-3 陈旧标记)图标侧
+  改按 Kimi 自己的 `lastSuccessAt`,机制不变;P2-7(IC-2 a11y 一行)图标侧改成 Kimi 口径。
+- **不触**:popover 总览条 / 全局最差 / 「已到期:」行 / 临界通知(仍全局口径)。
+- **验收**:`MenuBarKimiPresentationTests` / `MenuBarAccessibilityLabelTests`——核心一条是
+  「GLM 7 天窗 5%(全局最紧)也不改图标:Kimi 66% 绿」;`--render-previews` 图标态换 Kimi 形态
+  (`menubar-icon-kimi-*.png`),口径乙的「彩色 —」与「DeepSeek 临界×窗口 65%」转到
+  `popover-deepseek-*.png` 上验收。

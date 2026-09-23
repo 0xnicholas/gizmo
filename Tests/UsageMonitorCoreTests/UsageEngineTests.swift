@@ -56,7 +56,7 @@ struct UsageEngineTests {
         let cachedState = await harness.engine.state
         #expect(startEvents == [.snapshotUpdated(.glm)])
         #expect(cachedState.provider(.glm).snapshot == cached)
-        #expect(cachedState.overview.iconPercent == 80)
+        #expect(cachedState.overview.tightestPercent == 80)
 
         let refreshEvents = await harness.engine.refreshAll()
         let freshState = await harness.engine.state
@@ -298,7 +298,7 @@ struct UsageEngineTests {
         #expect(state.provider(.glm).snapshot == cached)
         #expect(state.provider(.glm).loadFailed)
         #expect(state.provider(.glm).lastSuccessAt == cached.meta.fetchedAt)
-        #expect(state.overview.iconPercent == 50)  // status 仍按持有快照推导
+        #expect(state.overview.tightestPercent == 50)  // status 仍按持有快照推导
         #expect(harness.cache.snapshots()[.glm] == cached)
     }
 
@@ -556,7 +556,7 @@ struct UsageEngineTests {
         let critical = await harness.engine.state
         #expect(critical.provider(.glm).status == .critical)
         #expect(critical.overview.worstStatus == .critical)
-        #expect(critical.overview.iconPercent == 49)
+        #expect(critical.overview.tightestPercent == 49)
 
         // 恢复(两种窗均 ≥90%)→ 1 分钟后再次跨入:自定义冷却(60s)已过 → 再发(默认 24h 下会静默)
         harness.fetchers[.glm]?.respond(with: Payloads.glm(fiveHourRemaining: 11_100, weeklyRemaining: 55_000))
@@ -595,7 +595,7 @@ struct UsageEngineTests {
         #expect(manualDeadline == Fixture.epoch.addingTimeInterval(35 * 60))
     }
 
-    @Test("全局汇总:图标数字与颜色取全部快照")
+    @Test("全局汇总:总览大数字与颜色取全部快照")
     func overviewFromEngineState() async {
         let harness = EngineHarness(payloads: [
             .glm: Payloads.glm(fiveHourRemaining: 11_358, weeklyRemaining: 28_200),  // 47%
@@ -604,7 +604,7 @@ struct UsageEngineTests {
         ])
         _ = await harness.engine.refreshAll()
         let state = await harness.engine.state
-        #expect(state.overview.iconPercent == 36)
+        #expect(state.overview.tightestPercent == 36)
         #expect(state.overview.tightest?.provider == .kimi)
         #expect(state.overview.worstStatus == .critical)  // DeepSeek ¥8
         #expect(state.hasAnyCredential)

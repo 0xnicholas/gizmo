@@ -46,7 +46,7 @@ struct ManualPlanExpirySupportTests {
 struct ManualPlanExpiryEngineTests {
     private let epoch = Fixture.epoch
 
-    @Test("注入声明:运行态带上它,总览把该家剔出结论(图标/最紧/最差)")
+    @Test("注入声明:运行态带上它,总览把该家剔出结论(大数字/最紧/最差)")
     func manualMarkExcludesFromGlobalConclusions() async {
         // Kimi 周窗 5%(临界、全局最紧)——标记后应退出全部全局结论
         let harness = EngineHarness(payloads: [.glm: Payloads.glm(), .kimi: Payloads.kimi(weekRemaining: 5)])

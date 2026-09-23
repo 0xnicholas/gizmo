@@ -81,18 +81,24 @@ enum DevPreviewRenderer {
         )
         write(SettingsWindowView(model: keychainError), name: "settings-keychain-error.png", into: directory)
 
-        // 菜单栏图标全态:三态色数字 + 灰「—」 + 陈旧标记(IC-3:超 2× 轮询间隔降透明度);
-        // 每态顺带打印 a11y 一行说明(IC-2 验收)
-        menubarIcon(PreviewData.normalState(), name: "menubar-icon-normal.png", into: directory, contrast: .normal, staleness: true)
-        menubarIcon(PreviewData.lowState(), name: "menubar-icon-low.png", into: directory, contrast: .low)
-        menubarIcon(PreviewData.criticalState(), name: "menubar-icon-critical.png", into: directory, contrast: .critical)
-        menubarIcon(PreviewData.staleState(), name: "menubar-icon-stale.png", into: directory, staleness: true)
-        menubarIcon(PreviewData.freshState(), name: "menubar-icon-gray.png", into: directory)
+        // 菜单栏图标全态(#59:图标恒为 Kimi 一家,不随「全局最紧」换人)——
+        // 数字取 Kimi 最紧套餐窗、颜色随 Kimi 自身 status、陈旧标记跟 Kimi 的
+        // lastSuccessAt;三态色数字 + 灰「—」(未配置 / 凭据失效 / 到期)。
+        // 每态顺带打印 a11y 一行说明(IC-2 验收)。
+        // 关锤一条:「GLM 更紧也不改图标」——GLM 5%(红)而 Kimi 66%,
+        // 图标必须显绿「66%」(旧口径此处显「5%」红,色档报告也是 .normal)。
+        menubarIcon(PreviewData.criticalState(), name: "menubar-icon-kimi-vs-tighter-glm.png", into: directory, contrast: .normal)
+        menubarIcon(PreviewData.menubarKimiLowState(), name: "menubar-icon-kimi-low.png", into: directory, contrast: .low)
+        menubarIcon(PreviewData.menubarKimiCriticalState(), name: "menubar-icon-kimi-critical.png", into: directory, contrast: .critical)
+        menubarIcon(PreviewData.menubarKimiStaleState(), name: "menubar-icon-kimi-stale.png", into: directory, staleness: true)
+        menubarIcon(PreviewData.freshState(), name: "menubar-icon-kimi-missing.png", into: directory)
+        menubarIcon(PreviewData.menubarKimiCredentialInvalidState(), name: "menubar-icon-kimi-credential-invalid.png", into: directory)
+        menubarIcon(PreviewData.kimiManuallyMarkedState(), name: "menubar-icon-kimi-expired.png", into: directory)
 
-        // 口径乙(IC-4+IC-5):DeepSeek 临界 + GLM 窗 65% → 数字绿(旧口径此处红);
-        // DeepSeek-only 临界 → 彩色「—」(旧口径永久灰)。menubarContrast 报告字形 rgb 供验收。
-        menubarIcon(PreviewData.deepseekCriticalWithWindowsState(), name: "menubar-icon-deepseek-critical-window65.png", into: directory, contrast: .normal)
-        menubarIcon(PreviewData.deepseekOnlyCriticalState(), name: "menubar-icon-deepseek-only-critical.png", into: directory, contrast: .critical)
+        // 口径乙(IC-4+IC-5)的落脚点:菜单栏不再有「彩色 —」与 DeepSeek 余额档染红,
+        // 这两条形态只能到总览条上看——数字绿 65%(旧口径此处红)与「彩色 —」。
+        write(PopoverView(model: seeded(PreviewData.deepseekCriticalWithWindowsState())).frame(width: 360), name: "popover-deepseek-critical-window65.png", into: directory)
+        write(PopoverView(model: seeded(PreviewData.deepseekOnlyCriticalState())).frame(width: 360), name: "popover-deepseek-only-critical.png", into: directory)
 
         // 到期形态(#54):GLM 自动到期 / 即将到期(仅文本)/ 到期状态未确认(陈旧归属)/
         // 到期家额度失败(灰条替代橙色失败条)。OCR 必见:已到期 / 剩 2 天 /
@@ -103,17 +109,14 @@ enum DevPreviewRenderer {
         write(PopoverView(model: seeded(PreviewData.glmExpiredStaleState())).frame(width: 360), name: "popover-glm-expired-stale.png", into: directory)
         write(PopoverView(model: seeded(PreviewData.glmExpiredLoadFailedState())).frame(width: 360), name: "popover-glm-expired-load-failed.png", into: directory)
 
-        // 全到期(#56):三家套餐均已到期——图标回灰「—」,a11y 与 tooltip 讲清来历,
-        // 总览条标题换成「三家套餐均已到期」并点名三家。OCR 必见:三家套餐均已到期 /
-        // 已到期:。构造态(DeepSeek 恒 unknown,planStates 注入),见 PreviewData 注释。
+        // 全到期(#56):总览条标题换成「三家套餐均已到期」并点名三家。OCR 必见:
+        // 三家套餐均已到期 / 已到期:。(#59 起图标不再自己报「三家」——
+        // 它只看 Kimi:此态 Kimi 到期 → 灰「—」+a11y「套餐已到期」。)
         write(PopoverView(model: seeded(PreviewData.allPlansExpiredState())).frame(width: 360), name: "popover-all-plans-expired.png", into: directory)
-        menubarIcon(PreviewData.allPlansExpiredState(), name: "menubar-icon-all-plans-expired.png", into: directory)
 
         // 可自然达到的全到期形态(#58 后):GLM 自动到期 + Kimi 手动标记到期、DeepSeek 未配置
-        // ——标题「套餐均已到期」(不到「三家」)、图标灰「—」、a11y 只报「已到期:两家」。
-        // OCR 必见:套餐均已到期 / 已到期:。
+        // ——标题「套餐均已到期」(不到「三家」)。OCR 必见:套餐均已到期 / 已到期:。
         write(PopoverView(model: seeded(PreviewData.glmKimiExpiredDeepSeekMissingState())).frame(width: 360), name: "popover-glm-kimi-expired.png", into: directory)
-        menubarIcon(PreviewData.glmKimiExpiredDeepSeekMissingState(), name: "menubar-icon-glm-kimi-expired.png", into: directory)
 
         // 手动标记到期(#58,可自然达到):Kimi 卡灰「已到期」+「手动标记于 MM-dd」+
         // 「已续订?恢复显示」按钮,退出全局结论(最紧轮到 GLM);设置窗口 Kimi 页
@@ -153,7 +156,7 @@ enum DevPreviewRenderer {
             padding: 8,
             menubarContrast: contrast,
             menubarStaleness: staleness,
-            menubarAccessibility: IconAccessibilityPresentation(state: state).text
+            menubarAccessibility: MenuBarAccessibilityPresentation(state: state).text
         )
     }
 

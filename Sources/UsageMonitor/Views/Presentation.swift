@@ -44,7 +44,7 @@ enum Presentation {
 
     /// 「点名某状态家」的共享口径:持快照、凭据正常、且**未到期**(失效家的旧档
     /// 是凭据问题归横幅;到期家的档是死数据,#56 退出全局结论)。总览条 alertLine
-    /// 与图标 a11y 最差半句共用,防两处口径漂移。
+    /// 与标题/副行的口径参考共用,防两处漂移。
     static func providers(withStatus status: ProviderStatus, in state: EngineState) -> [Provider] {
         Provider.displayOrder.filter { provider in
             let runtime = state.provider(provider)
@@ -56,7 +56,8 @@ enum Presentation {
     /// 「点名到期家」的共享口径(#56):与 `providers(withStatus:)` 同型的**点名口径**
     /// ——与引擎侧 `state.overview.expiredProviders`(枚举序、不看凭据)是两个东西:
     /// 这里按展示序、且只点名凭据正常的持快照到期家(凭据问题优先于到期,归横幅)。
-    /// 总览条「已到期:」行、图标 a11y 的到期半句、全到期判定共用。
+    /// 总览条「已到期:」行、全到期判定共用(#59 起图标 a11y 不再报全局到期:
+    /// 图标恒为 Kimi,到期与否只看 Kimi 自己)。
     static func namedExpiredProviders(in state: EngineState) -> [Provider] {
         Provider.displayOrder.filter { provider in
             state.overview.expiredProviders.contains(provider)
@@ -64,8 +65,8 @@ enum Presentation {
         }
     }
 
-    /// 三家全到期(#56):图标回灰「—」时「—」不能再产生「是不是没联网」的歧义——
-    /// a11y 与 tooltip 讲清「三家套餐均已到期」。手动标记入口只给 Kimi(#58)、
+    /// 三家全到期(#56):总览条「全局最紧」已无参评家——标题换「三家套餐均已到期」,
+    /// 免得「—」产生「是不是没联网」的歧义。手动标记入口只给 Kimi(#58)、
     /// DeepSeek 恒 unknown:此态仍不可自然达到(预览/测试可注入 planStates 构造)。
     static func isAllPlansExpired(in state: EngineState) -> Bool {
         namedExpiredProviders(in: state).count == Provider.allCases.count
@@ -335,9 +336,22 @@ struct EveryMinute<Content: View>: View {
     }
 }
 
+/// 单家最紧 plan-window 的取数口径(tab 速览与菜单栏图标共用):全部 plan-window
+/// 中剩余占比最低者(并列取先出现者),频限窗不参与——与 status 判定同一范围。
+/// 数字口径只此一份:`StatusEvaluator.lowestPlanWindowFraction` 只给占比,
+/// 图标还要窗口名(a11y 要讲「Kimi 周窗口」),两处各拼一次会漂移。
+enum TightestPlanWindow {
+    static func of(_ snapshot: Snapshot?) -> QuotaWindow? {
+        snapshot?.planWindows
+            .compactMap { window in window.remainingFraction.map { (window: window, fraction: $0) } }
+            .min { $0.fraction < $1.fraction }?
+            .window
+    }
+}
+
 /// 单家 tab 的速览数字口径(P2-5,B,#43):tab 文本追加各家 plan-window 最低
 /// 剩余%——数字与焦点卡窗口行、总览大数字同源(Percent.display,经
-/// StatusEvaluator.lowestPlanWindowFraction,频限窗不参与),不用切两次标签页
+/// TightestPlanWindow,频限窗不参与),不用切两次标签页
 /// 看另外两家。颜色随该家 status,口径乙同型:窗口家色档 = 最紧窗自身色档;
 /// DeepSeek 无窗的「彩色 —」由余额色档给色;无快照家灰「—」。
 /// tab 圆点与数字共用同一取色档(quickFigure.colorStatus),两处不打架。
@@ -358,8 +372,7 @@ struct TabPercentPresentation {
             return
         }
         colorStatus = runtime.hasSnapshot ? runtime.status : nil
-        if let snapshot = runtime.snapshot,
-           let fraction = StatusEvaluator().lowestPlanWindowFraction(in: snapshot) {
+        if let fraction = TightestPlanWindow.of(runtime.snapshot)?.remainingFraction {
             text = "\(Percent.display(fraction))%"
         } else {
             text = "—"
@@ -367,11 +380,15 @@ struct TabPercentPresentation {
     }
 }
 
-/// 全局结论数字的呈现口径:数字 = 全局最低 plan-window 剩余%(四舍五入整数,最低 1%),
-/// 颜色随数字口径(口径乙,IC-4+IC-5):有窗 = 最紧窗所属 provider 的档位,
-/// 无窗但持快照 = 该家档位给色的「彩色 —」,全无快照 = 灰「—」。
-/// 菜单栏图标与 popover 总览条共用同一映射,两处数字与颜色不打架(用户故事 18)。
+/// popover 总览条「全局最紧」的呈现口径:数字 = 全局最低 plan-window 剩余%
+/// (四舍五入整数,最低 1%),颜色随数字口径(口径乙,IC-4+IC-5):有窗 = 最紧窗
+/// 所属 provider 的档位,无窗但持快照 = 该家档位给色的「彩色 —」,全无快照 = 灰「—」。
 /// 全局最差(含 DeepSeek 余额档)仍由总览条圆点/alertLine 与临界通知兜底。
+///
+/// 菜单栏图标**不再**消费此处(#59):图标恒为 Kimi 一家,见
+/// `MenuBarPercentPresentation`——同一数值在总览条与图标各算一次的字面同源就此解除,
+/// 换来的是「图标不随别家换人」;两处数字仍共用 `Percent.display` 与
+/// `TightestPlanWindow`,除法与取整口径不分叉。
 struct GlobalPercentPresentation {
     /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3,spec P0-3)。
     static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
@@ -389,7 +406,7 @@ struct GlobalPercentPresentation {
     let isStale: Bool
 
     init(state: EngineState, scheme: ColorScheme, now: Date = Date()) {
-        if let percent = state.overview.iconPercent, let tightest = state.overview.tightest {
+        if let percent = state.overview.tightestPercent, let tightest = state.overview.tightest {
             text = "\(percent)%"
             colorStatus = state.provider(tightest.provider).status
             color = Presentation.color(for: colorStatus, scheme: scheme)
@@ -407,7 +424,7 @@ struct GlobalPercentPresentation {
     /// 无任何 plan-window 时:有快照的家按自身档位给色(DeepSeek-only 的余额档
     /// 「彩色 —」);全无快照则灰(全新安装口径不变)。按展示序取第一个持快照家,
     /// 现实里无窗持快照的只有 DeepSeek。到期家(#56)被跳过——死档不给「—」夸活;
-    /// 全部持快照家都到期时退灰(与全到期图标形态一致)。
+    /// 全部持快照家都到期时退灰(未到期家一个不剩,没有谁能给「—」上色)。
     private static func snapshotHolderStatus(_ state: EngineState) -> ProviderStatus? {
         for provider in Provider.displayOrder {
             guard !state.overview.expiredProviders.contains(provider) else { continue }
@@ -418,50 +435,114 @@ struct GlobalPercentPresentation {
     }
 }
 
-/// 菜单栏图标 a11y 一行说明(IC-2,P2-7,#45):「全局最紧剩余 65%,GLM 7 天窗;
-/// 最差状态:DeepSeek 临界」——VoiceOver 一行同时报数字口径(最紧窗)与全局最差
-/// 状态,补足口径乙后图标本体的口径收窄(颜色随数字、全局最差退居总览条/通知)。
-/// 最差半句与总览条 alertLine 同口径:只点名凭据正常的持快照家(失效家的旧档
-/// 是凭据问题,归横幅),全正常收成「全部正常」不点名凑数。
-struct IconAccessibilityPresentation {
+/// 菜单栏图标口径(#59):图标恒为 **Kimi 一家**的用量,不再随「全局最紧」换人。
+/// 数字 = Kimi 最紧 plan-window 的剩余%(经 `TightestPlanWindow`,与 Kimi 焦点卡
+/// 窗口行 / tab 速览同源),颜色随数字 = Kimi 自身 status——他者更紧(含 DeepSeek
+/// 余额档)不改图标上场家。popover 总览条仍按口径乙给「彩色 —」
+/// (spec `2026-ux-improvements` P2-3 的图标半句由本口径修订:菜单栏不再有
+/// 「谁最紧显示谁」与 DeepSeek-only 彩色「—」形态;总览条半句不变)。
+///
+/// 没有数字的来历一律灰「—」,由 `MenuBarAccessibilityPresentation` 讲清:
+/// 凭据问题(未配置 / 失效 / 读取失败)、到期(#54 自动 / #58 手动)、
+/// 加载失败尚无成功、快照无套餐窗。
+struct MenuBarPercentPresentation {
+    /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3)。
+    static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
+
+    let text: String
+    let color: Color
+    /// 数字口径的取色档:持数字 = Kimi 自身 status;无数字 = nil(灰)。
+    let colorStatus: ProviderStatus?
+    /// 数字是否陈旧:按 **Kimi 自己**的 lastSuccessAt——不用全局 lastUpdatedAt,
+    /// 那会被别家成功刷新冲掉,不能反映「这个数字」的新旧。
+    let isStale: Bool
+
+    init(state: EngineState, scheme: ColorScheme, now: Date = Date()) {
+        let runtime = state.provider(.kimi)
+        // 凭据问题优先于到期(全库同序):失效家的旧档是凭据问题,不是「现在还能用多少」。
+        // 图标不给冻结数字假装新鲜的机会——「已配置」是数字上场的第一道门。
+        if runtime.credential != .configured {
+            text = "—"
+            colorStatus = nil
+            isStale = false
+        } else if PlanState.evaluate(runtime: runtime, now: now).isExpired {
+            // 到期(#54/#58,含手动标记):死档不给数字留位置(与 tab 速览同位)。
+            text = "—"
+            colorStatus = nil
+            isStale = false
+        } else if let fraction = TightestPlanWindow.of(runtime.snapshot)?.remainingFraction {
+            text = "\(Percent.display(fraction))%"
+            colorStatus = runtime.status
+            isStale = runtime.lastSuccessAt.map { now.timeIntervalSince($0) > Self.staleThreshold } ?? false
+        } else {
+            // 加载失败尚无成功 / 快照无套餐窗:同形灰「—」,来历归 a11y。
+            text = "—"
+            colorStatus = nil
+            isStale = false
+        }
+        color = Presentation.color(for: colorStatus, scheme: scheme)
+    }
+}
+
+/// 菜单栏图标 a11y 一行说明(IC-2,P2-7,#45 的 Kimi 口径,#59):
+/// 「Kimi 周窗口剩余 66%,状态正常」——VoiceOver 看不见颜色,也不该只听到一个
+/// 光秃的「—」:数字口径(哪窗多少 + 哪档)与「—」的来历(未配置 / 凭据失效 /
+/// 读取失败 / 到期 / 加载失败 / 尚无数据)都在这一行里讲清。
+/// 凭据问题排在最前:读取失败是状态未知,不误报「未配置」;失效家的到期
+/// 断言不做(与焦点卡/tab 同序)。
+struct MenuBarAccessibilityPresentation {
     let text: String
 
-    init(state: EngineState) {
-        guard state.overview.snapshotCount > 0 else {
-            text = "用量监视器,尚无数据"
+    init(state: EngineState, now: Date = Date()) {
+        let runtime = state.provider(.kimi)
+        let name = Presentation.shortName(.kimi)
+        if state.credentialReadFailures.contains(.kimi) {
+            text = "用量监视器,\(name) 凭据状态未知(钥匙串读取失败)"
             return
         }
-        // 三家全到期(#56):「—」必须讲清来历——不是没联网、不是没数据,
-        // 是三家套餐均已到期。
-        if Presentation.isAllPlansExpired(in: state) {
-            text = "用量监视器,三家套餐均已到期"
+        switch runtime.credential {
+        case .missing:
+            text = "用量监视器,\(name) 尚未配置凭据"
+            return
+        case .invalid:
+            text = "用量监视器,\(name) 凭据失效,请在设置中重新配置"
+            return
+        case .configured:
+            break
+        }
+        switch PlanState.evaluate(runtime: runtime, now: now) {
+        case .manuallyExpired:
+            text = "用量监视器,\(name) 套餐已到期(手动标记)"
+            return
+        case .expired:
+            text = "用量监视器,\(name) 套餐已到期"
+            return
+        case .active, .unknown:
+            break
+        }
+        guard let window = TightestPlanWindow.of(runtime.snapshot),
+              let fraction = window.remainingFraction
+        else {
+            // 「—」的三种来历分开讲:加载失败(连旧数据都没有) / 只持非套餐窗 /
+            // 尚未刷过。都不留「是不是没联网」的歧义。
+            if runtime.loadFailed {
+                text = "用量监视器,\(name) 加载失败,尚无数据"
+            } else if runtime.hasSnapshot {
+                text = "用量监视器,\(name) 暂无套餐窗口数据"
+            } else {
+                text = "用量监视器,\(name) 尚无数据"
+            }
             return
         }
-        let expired = Presentation.namedExpiredProviders(in: state)
-        var parts: [String] = []
-        if let tightest = state.overview.tightest {
-            parts.append("全局最紧剩余 \(tightest.displayPercent)%,\(Presentation.shortName(tightest.provider)) \(tightest.windowLabel)")
-        } else if expired.isEmpty {
-            // 有到期家时不再报「暂无窗口数据」——「—」的来历就是到期,由到期半句讲清。
-            parts.append("暂无窗口数据")
+        let windowName = window.label.isEmpty ? "\(name) 套餐窗口" : "\(name) \(window.label)"
+        var parts = [
+            "\(windowName)剩余 \(Percent.display(fraction))%",
+            "状态\(Presentation.label(for: runtime.status))",
+        ]
+        if runtime.loadFailed {
+            // IC-3:数字来自最后一次成功——旧数字附「最后成功 HH:mm」,与焦点卡/总览条同口径。
+            parts.append(runtime.lastSuccessAt.map { "加载失败(最后成功 \(Presentation.time($0)))" } ?? "加载失败")
         }
-        parts.append(Self.worstClause(state))
-        if !expired.isEmpty {
-            parts.append("已到期:" + expired.map(Presentation.shortName).joined(separator: "、"))
-        }
-        text = parts.filter { !$0.isEmpty }.joined(separator: ";")
-    }
-
-    private static func worstClause(_ state: EngineState) -> String {
-        guard let worst = state.overview.worstStatus else { return "" }
-        if worst == .normal {
-            return "最差状态:全部正常"
-        }
-        let names = Presentation.providers(withStatus: worst, in: state)
-            .map(Presentation.shortName)
-        if names.isEmpty {
-            return "最差状态:\(Presentation.label(for: worst))"
-        }
-        return "最差状态:\(names.joined(separator: "、")) \(Presentation.label(for: worst))"
+        text = parts.joined(separator: ",")
     }
 }

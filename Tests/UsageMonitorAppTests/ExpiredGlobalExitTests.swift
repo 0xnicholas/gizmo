@@ -82,7 +82,7 @@ struct ExpiredGlobalExitTests {
     @Test("彩色「—」取色跳过到期家:GLM 到期、唯一无窗持快照家 DeepSeek 健康 → 余额档给色")
     func coloredDashSkipsExpiredHolder() {
         // GLM 到期(5% 死档)、Kimi 未配置、DeepSeek 余额健康:无任何未到期窗口
-        // → 图标「—」,色只能来自持快照家——不能取 GLM 的死档。
+        // → 总览条「—」,色只能来自持快照家——不能取 GLM 的死档。
         let state = Self.makeState(
             glm: Self.expiredGlm(),
             kimi: PreviewData.runtime(.kimi, snapshot: nil, credential: .missing),

@@ -13,8 +13,8 @@ struct PercentTests {
         #expect(Percent.rounded(0.0004) == 0)   // 中性场景不钳制
     }
 
-    @Test("图标数字与总览条「全局最紧」同源(用户故事 18)")
-    func iconMatchesOverviewBar() {
+    @Test("总览大数字与「全局最紧」同源(用户故事 18)")
+    func tightestPercentMatchesOverviewBar() {
         let evaluator = StatusEvaluator()
         let snapshots: [Provider: Snapshot] = [
             .glm: Fixture.snapshot(provider: .glm, windows: [
@@ -23,8 +23,8 @@ struct PercentTests {
         ]
         let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator, now: Fixture.epoch)
         let tightest = try! #require(overview.tightest)
-        #expect(overview.iconPercent == tightest.displayPercent)
-        #expect(tightest.displayPercent == 1)  // 0.3% → 图标与总览条都显示 1%
+        #expect(overview.tightestPercent == tightest.displayPercent)
+        #expect(tightest.displayPercent == 1)  // 0.3% → 大数字与副行都显示 1%
     }
 }
 

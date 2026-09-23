@@ -3,12 +3,12 @@ import Testing
 import UsageMonitorCore
 @testable import UsageMonitor
 
-/// 图标/总览大数字的取色口径乙(IC-4+IC-5,#41):颜色随数字口径——
+/// 总览大数字的取色口径乙(IC-4+IC-5,#41):颜色随数字口径——
 /// 有额度窗口时 = 最紧窗所属 provider 的 status(即最紧窗自身档位);
 /// 无任何窗口(DeepSeek-only / 首刷未回)时 = 持快照家的档位给色「彩色 —」;
 /// 全无快照 = nil(灰「—」)。DeepSeek 余额临界不再把数字拉红,
 /// 由临界通知与总览条(圆点/alertLine 仍消费 worstStatus)兜底。
-@Suite("全局数字取色口径乙(IC-4+IC-5)")
+@Suite("总览大数字取色口径乙(IC-4+IC-5)")
 struct GlobalPercentColorStatusTests {
     private static let now = Date(timeIntervalSince1970: 1_789_000_000)
 

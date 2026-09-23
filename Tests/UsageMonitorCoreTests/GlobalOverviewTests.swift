@@ -2,12 +2,12 @@ import Foundation
 import Testing
 @testable import UsageMonitorCore
 
-@Suite("全局汇总(图标数字与总览条口径)")
+@Suite("全局汇总(总览条「全局最紧」口径)")
 struct GlobalOverviewTests {
     let evaluator = StatusEvaluator()
 
-    @Test("图标数字取全部 provider 的 plan-window 最低剩余占比")
-    func iconPercentUsesLowestFraction() {
+    @Test("最紧百分比取全部 provider 的 plan-window 最低剩余占比")
+    func tightestPercentUsesLowestFraction() {
         let snapshots: [Provider: Snapshot] = [
             .glm: Fixture.snapshot(provider: .glm, windows: [
                 Fixture.planWindow(limit: 12_000, remaining: 6_000, label: "5 小时窗"),
@@ -18,13 +18,13 @@ struct GlobalOverviewTests {
             ]),
         ]
         let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator, now: Fixture.epoch)
-        #expect(overview.iconPercent == 36)
+        #expect(overview.tightestPercent == 36)
         #expect(overview.tightest?.provider == .kimi)
         #expect(overview.tightest?.windowLabel == "周窗口")
     }
 
-    @Test("图标数字四舍五入,最低 1%,真 0 显示 0")
-    func iconPercentRounding() {
+    @Test("最紧百分比四舍五入,最低 1%,真 0 显示 0")
+    func tightestPercentRounding() {
         func percent(remaining: Double, limit: Double) -> Int? {
             let overview = GlobalOverview.compute(
                 snapshots: [.glm: Fixture.snapshot(provider: .glm, windows: [
@@ -33,20 +33,20 @@ struct GlobalOverviewTests {
                 evaluator: evaluator,
                 now: Fixture.epoch
             )
-            return overview.iconPercent
+            return overview.tightestPercent
         }
         #expect(percent(remaining: 6_450, limit: 10_000) == 65)  // 64.5% 向上取整
         #expect(percent(remaining: 4, limit: 10_000) == 1)       // 0.04% → 最低 1%
         #expect(percent(remaining: 0, limit: 10_000) == 0)       // 真 0 显示 0
     }
 
-    @Test("只有 DeepSeek(无任何窗口)时图标为「—」,但状态仍可拉低")
+    @Test("只有 DeepSeek(无任何窗口)时总览大数字为「—」,但状态仍可拉低")
     func noWindowsMeansDash() {
         let snapshots: [Provider: Snapshot] = [
             .deepseek: Fixture.snapshot(provider: .deepseek, balances: [Fixture.balance(.topUp, "3.00")]),
         ]
         let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator, now: Fixture.epoch)
-        #expect(overview.iconPercent == nil)
+        #expect(overview.tightestPercent == nil)
         #expect(overview.tightest == nil)
         #expect(overview.worstStatus == .critical)
     }
@@ -60,14 +60,14 @@ struct GlobalOverviewTests {
             .deepseek: Fixture.snapshot(provider: .deepseek, balances: [Fixture.balance(.topUp, "30.00")]),
         ]
         let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator, now: Fixture.epoch)
-        #expect(overview.iconPercent == 64)
+        #expect(overview.tightestPercent == 64)
         #expect(overview.worstStatus == .low)
     }
 
     @Test("没有任何快照 → 无数字、无状态")
     func emptyState() {
         let overview = GlobalOverview.compute(snapshots: [:], evaluator: evaluator, now: Fixture.epoch)
-        #expect(overview.iconPercent == nil)
+        #expect(overview.tightestPercent == nil)
         #expect(overview.worstStatus == nil)
         #expect(overview.snapshotCount == 0)
     }
@@ -84,9 +84,9 @@ struct GlobalOverviewTests {
     }
 }
 
-/// 到期退出全局口径(#56):到期家不再充当任何全局结论——不进图标数字、
+/// 到期退出全局口径(#56):到期家不再充当任何全局结论——不进总览大数字、
 /// 不进「全局最紧」、不进全局最差状态;但由 `expiredProviders` 承认出来,
-/// 供总览条「已到期:」行与图标 a11y 讲清「—」的来历。
+/// 供总览条「已到期:」行讲清退出口径的家。
 @Suite("全局汇总的到期剔除(#56)")
 struct GlobalOverviewExpiryTests {
     let evaluator = StatusEvaluator()
@@ -95,7 +95,7 @@ struct GlobalOverviewExpiryTests {
         .expired(validUntil: validUntil, observedAt: Fixture.epoch)
     }
 
-    @Test("到期家退出最紧/最差/图标数字;未到期家照常参与")
+    @Test("到期家退出最紧/最差/大数字;未到期家照常参与")
     func expiredProviderExitsGlobalConclusions() {
         let snapshots: [Provider: Snapshot] = [
             .glm: Fixture.snapshot(provider: .glm, windows: [
@@ -112,7 +112,7 @@ struct GlobalOverviewExpiryTests {
 
         let overview = GlobalOverview.compute(snapshots: snapshots, evaluator: evaluator, planStates: [.glm: expiredPlan()])
         #expect(overview.tightest?.provider == .kimi)
-        #expect(overview.iconPercent == 66)
+        #expect(overview.tightestPercent == 66)
         #expect(overview.worstStatus == .normal, "死档不决定全局最差")
         #expect(overview.expiredProviders == [.glm])
     }
@@ -134,7 +134,7 @@ struct GlobalOverviewExpiryTests {
         #expect(overview.tightest?.provider == .kimi)
     }
 
-    @Test("全部到期:无最紧、无最差、图标「—」")
+    @Test("全部到期:无最紧、无最差、大数字「—」")
     func allExpiredMeansNoGlobalConclusions() {
         let snapshots: [Provider: Snapshot] = [
             .glm: Fixture.snapshot(provider: .glm, windows: [Fixture.planWindow(limit: 60_000, remaining: 1_000)]),
@@ -147,7 +147,7 @@ struct GlobalOverviewExpiryTests {
         )
         #expect(overview.tightest == nil)
         #expect(overview.worstStatus == nil)
-        #expect(overview.iconPercent == nil)
+        #expect(overview.tightestPercent == nil)
         #expect(overview.expiredProviders == [.kimi, .glm])
         #expect(overview.snapshotCount == 2, "持快照数不变——到期是退出结论,不是丢数据")
     }
@@ -182,7 +182,7 @@ struct GlobalOverviewExpiryTests {
             now: Fixture.epoch
         )
         #expect(active.expiredProviders.isEmpty)
-        #expect(active.iconPercent == 2)
+        #expect(active.tightestPercent == 2)
     }
 
     @Test("DeepSeek 恒 unknown:快照即使带 planValidity 也不被剔除(余额型家不做到期断言)")

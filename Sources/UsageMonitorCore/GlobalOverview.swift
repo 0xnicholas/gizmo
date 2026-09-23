@@ -1,6 +1,6 @@
 import Foundation
 
-/// 全局汇总口径:菜单栏图标数字与 popover 顶部「全局最紧」条共用同一个值(spec 用户故事 18)。
+/// 全局汇总口径:popover 顶部「全局最紧」条的大数字与副行共用同一个值。
 public struct GlobalOverview: Equatable, Sendable {
     /// 全局最紧的 plan-window:全部 provider 的 plan-window 中剩余占比最低者。
     public struct Tightest: Equatable, Sendable {
@@ -12,7 +12,7 @@ public struct GlobalOverview: Equatable, Sendable {
         public var fraction: Double
         public var resetAt: Date?
 
-        /// 与菜单栏图标同源的展示百分比(总览条与图标共用,两处数字不打架)。
+        /// 总览条大数字的展示百分比(总览条标题、副行与大数字同源,两处数字不打架)。
         public var displayPercent: Int { Percent.display(fraction) }
 
         public init(
@@ -39,8 +39,8 @@ public struct GlobalOverview: Equatable, Sendable {
     public var worstStatus: ProviderStatus?
     /// 参与判定的 provider 数(持有快照者)。
     public var snapshotCount: Int
-    /// 已到期的家(#56,按 `Provider.allCases` 序):退出最紧/最差/图标数字,
-    /// 但由呈现层的「已到期:」行与图标 a11y 承认——退出口径的家在结论区不留痕,
+    /// 已到期的家(#56,按 `Provider.allCases` 序):退出最紧/最差/总览大数字,
+    /// 但由呈现层的「已到期:」行承认——退出口径的家在结论区不留痕,
     /// 用户就只能逐个 tab 找。到期是持快照家的属性,无快照者不入此表。
     public var expiredProviders: [Provider]
 
@@ -56,9 +56,10 @@ public struct GlobalOverview: Equatable, Sendable {
         self.expiredProviders = expiredProviders
     }
 
-    /// 菜单栏图标数字:nil = 灰「—」(没有任何 plan-window 数据)。
-    /// 口径见 `Percent.display`。
-    public var iconPercent: Int? {
+    /// popover 总览条大数字:nil = 灰「—」(没有任何 plan-window 数据)。
+    /// 口径见 `Percent.display`。菜单栏图标 #59 起恒为 Kimi、不吃这个值
+    /// (见 `MenuBarPercentPresentation`),此处名字不叫 icon* 正是为了不再指错。
+    public var tightestPercent: Int? {
         tightest.map { Percent.display($0.fraction) }
     }
 

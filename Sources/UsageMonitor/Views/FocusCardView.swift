@@ -351,7 +351,7 @@ struct QuotaWindowRow: View {
                 Text("/ \(Money.formatCount(window.limit)) \(window.unit)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                // FC-2:行尾 muted 剩余百分比,与图标/总览同源同口径
+                // FC-2:行尾 muted 剩余百分比,与 tab 速览 / 总览同源同口径
                 // (Percent.display),互证「全局最紧」的数字从哪条窗来。
                 // 到期后撤下:百分比是结论性断言,死数据不带结论。
                 if !expired, let fraction = window.remainingFraction {

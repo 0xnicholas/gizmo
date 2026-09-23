@@ -295,7 +295,8 @@ struct PopoverView: View {
     }
 }
 
-/// 顶部「全局最紧」总览条:与菜单栏图标同口径(全部 plan-window 的最低剩余)。
+/// 顶部「全局最紧」总览条:三家全部 plan-window 的最低剩余(菜单栏图标 #59 起
+/// 恒为 Kimi、不在此口径内)。
 struct GlobalOverviewBar: View {
     let state: EngineState
     @Environment(\.colorScheme) private var scheme
@@ -333,7 +334,7 @@ struct GlobalOverviewBar: View {
                 }
             }
             Spacer()
-            // 全局结论扶正(骨架A,P0-2):大号百分比与菜单栏图标同源同口径,免读整句副行。
+            // 全局结论扶正(骨架A,P0-2):大号百分比与副行同源同口径,免读整句副行。
             let figure = GlobalPercentPresentation(state: state, scheme: scheme)
             Text(figure.text)
                 .font(.system(size: 22, weight: .semibold, design: .rounded))

@@ -73,15 +73,19 @@ enum PreviewData {
 
     static func kimi(
         weekRemaining: Int = 66,
+        rateLimitRemaining: Int = 90,
+        rateLimitOnly: Bool = false,
         validity: PlanValidity? = nil,
         fetchedAt: Date = PreviewData.freshFetchedAt()
     ) -> Snapshot {
-        Snapshot(
+        let windows = [
+            QuotaWindow(kind: .planWindow, label: "周窗口", unit: "请求", limit: 100, used: 100 - weekRemaining, remaining: weekRemaining, resetAt: fetchedAt.addingTimeInterval(6 * 86_400)),
+            QuotaWindow(kind: .rateLimit, label: "频限 · 滚动窗(300 分钟)", unit: "请求", limit: 100, used: 100 - rateLimitRemaining, remaining: rateLimitRemaining, resetAt: fetchedAt.addingTimeInterval(1_800)),
+        ]
+        return Snapshot(
             meta: SnapshotMeta(provider: .kimi, plan: Plan(level: "Allegretto", domain: "DOMAIN_NEXUS"), fetchedAt: fetchedAt, concurrencyLimit: 20),
-            windows: [
-                QuotaWindow(kind: .planWindow, label: "周窗口", unit: "请求", limit: 100, used: 100 - weekRemaining, remaining: weekRemaining, resetAt: fetchedAt.addingTimeInterval(6 * 86_400)),
-                QuotaWindow(kind: .rateLimit, label: "频限 · 滚动窗(300 分钟)", unit: "请求", limit: 100, used: 10, remaining: 90, resetAt: fetchedAt.addingTimeInterval(1_800)),
-            ],
+            // 套餐窗缺席的形态(现实里不该出现):菜单栏「—」与 a11y 的「暂无套餐窗口数据」验收用。
+            windows: rateLimitOnly ? windows.filter { $0.kind == .rateLimit } : windows,
             balances: [Balance(type: .wallet, amount: Decimal(string: "3.5")!, currency: "CNY")],
             rollingUsage: nil,
             planValidity: validity,
@@ -152,12 +156,19 @@ enum PreviewData {
         )
     }
 
-    /// 场景形态共用构造:GLM 7 天窗剩余按入参取档,他者健康;glmAge 控制 GLM 数据新旧;
+    /// 场景形态共用构造:GLM 7 天窗 / Kimi 周窗口剩余按入参取档,他者健康;
+    /// glmAge / kimiAge 分别控制两家数据新旧(图标陈旧标记只认 Kimi 自己,见 #59);
     /// deepseekTotal 控制 DeepSeek 余额档(口径乙验收用 8.20 复现临界)。
-    private static func scenarioState(glmWeeklyRemaining: Int, glmAge: TimeInterval = freshAge, deepseekTotal: String = "62.47") -> EngineState {
+    private static func scenarioState(
+        glmWeeklyRemaining: Int,
+        kimiWeekRemaining: Int = 66,
+        glmAge: TimeInterval = freshAge,
+        kimiAge: TimeInterval = freshAge,
+        deepseekTotal: String = "62.47"
+    ) -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
         providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: glmWeeklyRemaining, fetchedAt: Date().addingTimeInterval(-glmAge)))
-        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 66))
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: kimiWeekRemaining, fetchedAt: Date().addingTimeInterval(-kimiAge)))
         providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: deepseekTotal))
         return EngineState(
             providers: providers,
@@ -171,25 +182,21 @@ enum PreviewData {
         )
     }
 
-    /// 正常形态:三家全绿(GLM 65% · Kimi 66% · DeepSeek ¥62.47),图标绿「65%」。
+    /// 正常形态:三家全绿(GLM 65% · Kimi 66% · DeepSeek ¥62.47),总览大数字绿「65%」。
     static func normalState() -> EngineState {
         scenarioState(glmWeeklyRemaining: 39_000)
     }
 
-    /// 偏低形态:GLM 7 天窗 20%(黄),他者正常,图标黄「20%」。
+    /// 偏低形态:GLM 7 天窗 20%(黄),他者正常,总览大数字黄「20%」。
     static func lowState() -> EngineState {
         scenarioState(glmWeeklyRemaining: 12_000)
     }
 
-    /// 临界形态:GLM 7 天窗 5%(红,对照原型 critical 场景),他者健康,图标红「5%」。
+    /// 临界形态:GLM 7 天窗 5%(红,对照原型 critical 场景),他者健康,总览大数字红「5%」。
+    /// #59 起这个态也是菜单栏图标的对照面:GLM 5% 可它不动图标——图标看 Kimi(66% 绿),
+    /// 见 `--render-previews` 的 `menubar-icon-kimi-vs-tighter-glm.png`。
     static func criticalState() -> EngineState {
         scenarioState(glmWeeklyRemaining: 3_000)
-    }
-
-    /// 陈旧形态(IC-3 验收):GLM 数据 90 分钟前(超 2× 轮询间隔)、未进入加载失败态——
-    /// 隔离「图标陈旧标记」与「加载失败」两条呈现路径。
-    static func staleState() -> EngineState {
-        scenarioState(glmWeeklyRemaining: 39_000, glmAge: 90 * 60)
     }
 
     /// 钥匙串读取异常形态:GLM 读取失败(状态未知,仍持旧快照)、Kimi 失效、DeepSeek 未配置。
@@ -212,12 +219,14 @@ enum PreviewData {
 
     /// 口径乙验收(IC-4+IC-5):DeepSeek 余额临界 + GLM 7 天窗 65%(他者健康)——
     /// 旧口径「红 65%」混叠形态的复现场景;新口径数字应绿。
+    /// #59 起这条口径只活在 popover 总览条:菜单栏图标恒为 Kimi,不再有「彩色 —」/换人形态。
     static func deepseekCriticalWithWindowsState() -> EngineState {
         scenarioState(glmWeeklyRemaining: 39_000, deepseekTotal: "8.20")
     }
 
-    /// DeepSeek-only 临界:仅 DeepSeek 持快照、无任何 plan-window——「彩色 —」
-    /// (余额档给色)的验收形态;旧口径永久灰「—」。
+    /// DeepSeek-only 临界:仅 DeepSeek 持快照、无任何 plan-window——总览条「彩色 —」
+    /// (余额档给色)的验收形态;旧口径永久灰「—」。(#59 起图标恒为 Kimi:
+    /// 此态下 Kimi 未配置,图标就是灰「—」,与总览条各说各的。)
     static func deepseekOnlyCriticalState() -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
         providers[.glm] = runtime(.glm, snapshot: nil, credential: .missing)
@@ -227,6 +236,43 @@ enum PreviewData {
             providers: providers,
             lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
             lastRefreshFinishedAt: Date().addingTimeInterval(-freshAge),
+            overview: GlobalOverview.compute(
+                snapshots: providers.compactMapValues(\.snapshot),
+                evaluator: StatusEvaluator(),
+                now: Date()
+            )
+        )
+    }
+
+    // MARK: - 菜单栏图标口径(#59):图标恒为 Kimi
+
+    /// Kimi 周窗口 20%(偏低档):他者健康——图标色档只认 Kimi 自己,
+    /// GLM 更紧也拉不走它。
+    static func menubarKimiLowState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 39_000, kimiWeekRemaining: 20)
+    }
+
+    /// Kimi 周窗口 5%(临界档)而 GLM 65% 健康:黄色侧的同一条口径换红。
+    static func menubarKimiCriticalState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 39_000, kimiWeekRemaining: 5)
+    }
+
+    /// Kimi 数据 90 分钟前(超 2× 轮询间隔)、未进入加载失败态:
+    /// 陈旧标记只跟 Kimi 的 lastSuccessAt 走。
+    static func menubarKimiStaleState() -> EngineState {
+        scenarioState(glmWeeklyRemaining: 39_000, kimiAge: 90 * 60)
+    }
+
+    /// Kimi 凭据失效(他者健康):图标不给失效家的旧数字留位(灰「—」),
+    /// a11y 报「凭据失效」——凭据问题优先于「还有个 66% 的旧快照」。
+    static func menubarKimiCredentialInvalidState() -> EngineState {
+        var providers: [Provider: ProviderRuntimeState] = [:]
+        providers[.glm] = runtime(.glm, snapshot: glm(weeklyRemaining: 39_000))
+        providers[.kimi] = runtime(.kimi, snapshot: kimi(weekRemaining: 66), credential: .invalid)
+        providers[.deepseek] = runtime(.deepseek, snapshot: deepseek(total: "62.47"))
+        return EngineState(
+            providers: providers,
+            lastRefreshStartedAt: Date().addingTimeInterval(-freshAge),
             overview: GlobalOverview.compute(
                 snapshots: providers.compactMapValues(\.snapshot),
                 evaluator: StatusEvaluator(),
@@ -301,7 +347,7 @@ enum PreviewData {
     }
 
     /// 可自然达到的「全到期」形态(#58 后):GLM 自动到期 + Kimi 手动标记到期 +
-    /// DeepSeek 未配置——可计入的窗口家全部退出后,图标回灰「—」、总览条标题换
+    /// DeepSeek 未配置——可计入的窗口家全部退出后,总览条标题换
     /// 「套餐均已到期」(不到「三家」,DeepSeek 无套餐且未配置)。
     static func glmKimiExpiredDeepSeekMissingState() -> EngineState {
         var providers: [Provider: ProviderRuntimeState] = [:]
@@ -348,9 +394,9 @@ enum PreviewData {
         )
     }
 
-    /// 三家全到期(#56):图标回灰「—」、a11y/tooltip 讲清「三家套餐均已到期」的
-    /// 验收形态。构造态:手动标记入口只给 Kimi(#58 决议),DeepSeek 恒 unknown
-    /// (余额型家不做到期断言)——此态仍不可自然达到,口径与渲染先行,planStates 直接注入。
+    /// 三家全到期(#56):总览条标题换「三家套餐均已到期」的验收形态。
+    /// 构造态:手动标记入口只给 Kimi(#58 决议),DeepSeek 恒 unknown
+    /// (余额型家不做到期断言)——此态仍不可自然达到,planStates 直接注入。
     static func allPlansExpiredState() -> EngineState {
         let expired = validity(untilDays: -2, fromDays: -32)
         var providers: [Provider: ProviderRuntimeState] = [:]

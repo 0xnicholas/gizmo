@@ -3,10 +3,11 @@ import Testing
 import UsageMonitorCore
 @testable import UsageMonitor
 
-/// 图标数字的陈旧标记(IC-3,#33):最紧窗所属 provider 自己的 `lastSuccessAt`
+/// 总览大数字的陈旧标记(IC-3,#33):最紧窗所属 provider 自己的 `lastSuccessAt`
 /// 距 now 超过 2× 轮询间隔(默认 30 分钟 → 60 分钟)时降透明度;
 /// 不用全局 lastUpdatedAt(会被别家成功刷新冲掉)。
-@Suite("全局结论数字的陈旧标记(IC-3)")
+/// (#59 起菜单栏图标按同一规则但只认 Kimi,见 `MenuBarKimiPresentationTests`。)
+@Suite("总览大数字的陈旧标记(IC-3)")
 struct GlobalPercentStalenessTests {
     private static let now = Date(timeIntervalSince1970: 1_789_000_000)
     private static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
