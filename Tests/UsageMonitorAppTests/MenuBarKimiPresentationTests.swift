@@ -11,7 +11,8 @@ import UsageMonitorCore
 @Suite("菜单栏图标 Kimi 口径(#59)")
 struct MenuBarKimiPresentationTests {
     private static let now = Date(timeIntervalSince1970: 1_789_000_000)
-    private static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
+    /// 边界断言引用生产常量本身(而不是抄一份字面量),阈值改动时测试跟着动。
+    private static let staleThreshold: TimeInterval = MenuBarStaleness.threshold
 
     private func presentation(_ state: EngineState) -> MenuBarPercentPresentation {
         MenuBarPercentPresentation(state: state, scheme: .light, now: Self.now)

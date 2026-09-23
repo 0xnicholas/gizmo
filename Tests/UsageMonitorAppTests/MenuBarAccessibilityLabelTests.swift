@@ -88,6 +88,41 @@ struct MenuBarAccessibilityLabelTests {
             == "Kimi 周窗口剩余 5%,状态临界")
     }
 
+    /// 陈旧只有**视觉**表达(数字降透明度),读屏用户拿不到——同一事实得在这行里
+    /// 说一遍,否则图标的降透明度对 VoiceOver 用户不存在。
+    @Test("数据陈旧:一行说明补「数据较旧(最后成功 HH:mm)」")
+    func staleFigureAddsAgeClause() {
+        let state = self.state(kimi: kimiRuntime(age: 90 * 60), glm: healthyGLM())
+        let lastSuccess = Presentation.time(Self.now.addingTimeInterval(-90 * 60))
+        #expect(label(state) == "Kimi 周窗口剩余 66%,状态正常,数据较旧(最后成功 \(lastSuccess))")
+    }
+
+    /// 两个事实各占半句,时刻只报一次(陈旧 + 刷新失败同现时的完整形态,
+    /// 就是自然轮询下的加载失败形态)。
+    @Test("陈旧 + 加载失败:时刻不重复")
+    func staleAndLoadFailedShareOneTimestamp() {
+        let state = self.state(kimi: kimiRuntime(age: 90 * 60, loadFailed: true), glm: healthyGLM())
+        let lastSuccess = Presentation.time(Self.now.addingTimeInterval(-90 * 60))
+        #expect(label(state) == "Kimi 周窗口剩余 66%,状态正常,加载失败(最后成功 \(lastSuccess)),数据较旧")
+    }
+
+    /// 图标本体与这行说明的陈旧判定必须同源(看得见的不透明度 × 听得见的半句):
+    /// 两处各算一次时,最典型的漂移就是一个说旧、一个不说。
+    @Test("陈旧判定单一来源:图标 isStale 与陈旧半句同进同出")
+    func stalenessAgreesBetweenIconAndLabel() {
+        let cases: [(age: TimeInterval, stale: Bool)] = [
+            (5 * 60, false),
+            (MenuBarStaleness.threshold, false),
+            (MenuBarStaleness.threshold + 60, true),
+        ]
+        for item in cases {
+            let state = state(kimi: kimiRuntime(age: item.age))
+            let icon = MenuBarPercentPresentation(state: state, scheme: .light, now: Self.now)
+            #expect(icon.isStale == item.stale)
+            #expect(label(state).contains("数据较旧") == item.stale)
+        }
+    }
+
     /// 窗口名缺失(解析层没给 label)时不留空档:回退「套餐窗口」,不念成「Kimi 剩余」。
     @Test("窗口名缺失:回退「Kimi 套餐窗口」")
     func missingWindowLabelFallsBack() {
@@ -102,12 +137,15 @@ struct MenuBarAccessibilityLabelTests {
     }
 
     /// IC-3:数字来自最后一次成功——旧数字要承认自己是旧的(与焦点卡/总览条同口径)。
-    @Test("加载失败但持旧快照:报数字 + 最后成功时刻")
+    /// IC-3:数字来自最后一次成功——旧数字要承认自己是旧的(与焦点卡/总览条同口径);
+    /// 自然轮询下加载失败必然同时陈旧(3 轮失败 ≈ 90 分钟 > 60 分钟阈值),
+    /// 两个事实各占半句,「最后成功 HH:mm」只说一次。
+    @Test("加载失败但持旧快照:报数字 + 最后成功时刻 + 数据较旧")
     func loadFailedWithSnapshotAdmitsLastSuccess() {
         let age: TimeInterval = 3 * 3_600
         let state = self.state(kimi: kimiRuntime(age: age, loadFailed: true), glm: healthyGLM())
         let lastSuccess = Presentation.time(Self.now.addingTimeInterval(-age))
-        #expect(label(state) == "Kimi 周窗口剩余 66%,状态正常,加载失败(最后成功 \(lastSuccess))")
+        #expect(label(state) == "Kimi 周窗口剩余 66%,状态正常,加载失败(最后成功 \(lastSuccess)),数据较旧")
     }
 
     /// 与图标本体的降透明度正交(两口径的搭档断言):数据只旧 5 分钟就攒满失败的

@@ -206,3 +206,11 @@
 - **清死属性**:`GlobalPercentPresentation.isStale`(原图标消费)随图标改口径失去生产消费者,
   连同 `GlobalPercentStalenessTests` 一并删除;总览大数字的陈旧表达仍按 spec 原口径
   (只在最紧家 `loadFailed` 时副行补「(最后成功 HH:mm)」)。
+
+陈旧表达的读屏补齐(补掉 #59 收口时记的留白):
+
+- 图标数字的陈旧一直是**只给眼睛**的(降透明度),VoiceOver 那行说明不含它——读屏用户拿不到
+  「数字旧了」。现按同一判定(`MenuBarStaleness`)在那行补半句「数据较旧(最后成功 HH:mm)」,
+  与「加载失败(最后成功 HH:mm)」同现时各占半句、时刻只报一次。
+- 单一来源:阈值与判定收进 `MenuBarStaleness`(图标本体与一行说明共用),守门测试断言
+  「图标 isStale 与陈旧半句同进同出」。

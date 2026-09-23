@@ -410,6 +410,24 @@ struct GlobalPercentPresentation {
     }
 }
 
+/// 菜单栏图标的陈旧判定(IC-3):图标本体与一行说明共用一处——看得见的降透明度
+/// 与听得见的「数据较旧(最后成功 HH:mm)」必须是同一个判定,否则两个通道会各说各话。
+enum MenuBarStaleness {
+    /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3,spec P0-3)。
+    static let threshold: TimeInterval = 2 * Thresholds().refreshInterval
+
+    /// 按 **Kimi 自己**的 lastSuccessAt 判定——不用全局 lastUpdatedAt,那会被别家成功
+    /// 刷新冲掉,不能反映「这个数字」的新旧;lastSuccessAt 未知时不误标。
+    ///
+    /// 与 `loadFailed` **正交**(IC-3 原口径):陈旧看的是数据的**年龄**(2× 轮询间隔),
+    /// 加载失败看的是**刷新**这几次没成——刚失败时数据可能只旧几分钟,此时降透明度
+    /// 是撒谎。手动连点刷新只几十秒就能凑满 3 轮失败,不是纸上空谈;
+    /// 两个事实在一行说明里各占半句(a11y 侧)。
+    static func isStale(_ runtime: ProviderRuntimeState, now: Date) -> Bool {
+        runtime.lastSuccessAt.map { now.timeIntervalSince($0) > threshold } ?? false
+    }
+}
+
 /// 菜单栏图标口径(#59):图标恒为 **Kimi 一家**的用量,不再随「全局最紧」换人。
 /// 数字 = Kimi 最紧 plan-window 的剩余%(经 `Snapshot.tightestPlanWindow`,与 Kimi 焦点卡
 /// 窗口行 / tab 速览同源),颜色随数字 = Kimi 自身 status——他者更紧(含 DeepSeek
@@ -421,20 +439,11 @@ struct GlobalPercentPresentation {
 /// 凭据问题(未配置 / 失效 / 读取失败)、到期(#54 自动 / #58 手动)、
 /// 加载失败尚无成功、快照无套餐窗。
 struct MenuBarPercentPresentation {
-    /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3)。
-    static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
-
     let text: String
     let color: Color
     /// 数字口径的取色档:持数字 = Kimi 自身 status;无数字 = nil(灰)。
     let colorStatus: ProviderStatus?
-    /// 数字是否陈旧:按 **Kimi 自己**的 lastSuccessAt——不用全局 lastUpdatedAt,
-    /// 那会被别家成功刷新冲掉,不能反映「这个数字」的新旧。
-    ///
-    /// 与 `loadFailed` **正交**(IC-3 原口径,本次不改):陈旧看的是数据的**年龄**
-    /// (2× 轮询间隔),加载失败看的是**刷新**这几次没成——刚失败时数据可能只旧
-    /// 几分钟,此时降透明度是撒谎;刷新失败的事实由 a11y 的「加载失败(最后成功
-    /// HH:mm)」半句承担。手动连点刷新只几十秒就能凑满 3 轮失败,不是纸上空谈。
+    /// 数字是否陈旧(`MenuBarStaleness`,与 a11y 的陈旧半句同一判定)。
     let isStale: Bool
 
     init(state: EngineState, scheme: ColorScheme, now: Date = Date()) {
@@ -453,7 +462,7 @@ struct MenuBarPercentPresentation {
         } else if let fraction = runtime.snapshot?.tightestPlanWindow?.remainingFraction {
             text = "\(Percent.display(fraction))%"
             colorStatus = runtime.status
-            isStale = runtime.lastSuccessAt.map { now.timeIntervalSince($0) > Self.staleThreshold } ?? false
+            isStale = MenuBarStaleness.isStale(runtime, now: now)
         } else {
             // 加载失败尚无成功 / 快照无套餐窗:同形灰「—」,来历归 a11y。
             text = "—"
@@ -466,8 +475,9 @@ struct MenuBarPercentPresentation {
 
 /// 菜单栏图标 a11y 一行说明(IC-2,P2-7,#45 的 Kimi 口径,#59):
 /// 「Kimi 周窗口剩余 66%,状态正常」——VoiceOver 看不见颜色,也不该只听到一个
-/// 光秃的「—」:数字口径(哪窗多少 + 哪档)与「—」的来历(未配置 / 凭据失效 /
-/// 读取失败 / 到期 / 加载失败 / 尚无数据)都在这一行里讲清。
+/// 光秃的「—」:数字口径(哪窗多少 + 哪档)、数据是否陈旧(降透明度是说给眼睛的,
+/// 读屏得听到同一事实)与「—」的来历(未配置 / 凭据失效 / 读取失败 / 到期 /
+/// 加载失败 / 尚无数据)都在这一行里讲清。
 /// 凭据问题排在最前:读取失败是状态未知,不误报「未配置」;失效家的到期
 /// 断言不做(与焦点卡/tab 同序)。
 struct MenuBarAccessibilityPresentation {
@@ -522,6 +532,15 @@ struct MenuBarAccessibilityPresentation {
         if runtime.loadFailed {
             // IC-3:数字来自最后一次成功——旧数字附「最后成功 HH:mm」,与焦点卡/总览条同口径。
             parts.append(runtime.lastSuccessAt.map { "加载失败(最后成功 \(Presentation.time($0)))" } ?? "加载失败")
+        }
+        if MenuBarStaleness.isStale(runtime, now: now) {
+            // 陈旧只有**视觉**表达(数字降透明度),读屏用户拿不到——同一事实在这里
+            // 说一遍;时刻已由「加载失败」半句给出时不重复(两个事实各占半句)。
+            if runtime.loadFailed, let lastSuccessAt = runtime.lastSuccessAt {
+                parts.append("数据较旧")
+            } else if let lastSuccessAt = runtime.lastSuccessAt {
+                parts.append("数据较旧(最后成功 \(Presentation.time(lastSuccessAt)))")
+            }
         }
         text = parts.joined(separator: ",")
     }
