@@ -10,7 +10,6 @@ import UsageMonitorCore
 /// 由临界通知与总览条(圆点/alertLine 仍消费 worstStatus)兜底。
 @Suite("总览大数字取色口径乙(IC-4+IC-5)")
 struct GlobalPercentColorStatusTests {
-    private static let now = Date(timeIntervalSince1970: 1_789_000_000)
 
     private func runtime(
         _ provider: Provider,
@@ -28,7 +27,7 @@ struct GlobalPercentColorStatusTests {
     }
 
     private func colorStatus(_ state: EngineState) -> ProviderStatus? {
-        GlobalPercentPresentation(state: state, scheme: .light, now: Self.now).colorStatus
+        GlobalPercentPresentation(state: state, scheme: .light).colorStatus
     }
 
     /// DeepSeek 临界(余额 8.20)+ GLM 7 天窗 65%(健康):数字绿,不再红。
@@ -48,7 +47,7 @@ struct GlobalPercentColorStatusTests {
                 worstStatus: .critical // 全局最差 = DeepSeek 余额档(旧口径的红色来源)
             )
         )
-        let presentation = GlobalPercentPresentation(state: state, scheme: .light, now: Self.now)
+        let presentation = GlobalPercentPresentation(state: state, scheme: .light)
         #expect(presentation.text == "65%")
         #expect(presentation.colorStatus == .normal)
     }
@@ -99,7 +98,7 @@ struct GlobalPercentColorStatusTests {
             ],
             overview: overview(tightest: nil, worstStatus: .critical)
         )
-        let presentation = GlobalPercentPresentation(state: state, scheme: .light, now: Self.now)
+        let presentation = GlobalPercentPresentation(state: state, scheme: .light)
         #expect(presentation.text == "—")
         #expect(presentation.colorStatus == .critical)
     }
@@ -116,7 +115,7 @@ struct GlobalPercentColorStatusTests {
     @Test("全无快照:灰「—」(全新安装口径不变)")
     func noSnapshotsStaysGray() {
         let state = EngineState(providers: [:], overview: GlobalOverview(tightest: nil, worstStatus: nil, snapshotCount: 0))
-        let presentation = GlobalPercentPresentation(state: state, scheme: .light, now: Self.now)
+        let presentation = GlobalPercentPresentation(state: state, scheme: .light)
         #expect(presentation.text == "—")
         #expect(presentation.colorStatus == nil)
     }

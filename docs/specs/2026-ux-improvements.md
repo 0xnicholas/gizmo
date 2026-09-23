@@ -193,3 +193,16 @@
   「GLM 7 天窗 5%(全局最紧)也不改图标:Kimi 66% 绿」;`--render-previews` 图标态换 Kimi 形态
   (`menubar-icon-kimi-*.png`),口径乙的「彩色 —」与「DeepSeek 临界×窗口 65%」转到
   `popover-deepseek-*.png` 上验收。
+
+评审采纳(#59 后,双轴 code-review 的 P2):
+
+- **降透明度与加载失败正交**(写清,不改行为):图标数字降透明度只按 IC-3 的陈旧阈值
+  (2× 轮询间隔),不看 `loadFailed`——刚成功几分钟就连点刷新凑满 3 轮失败时,数据本身
+  不旧,降透明度是撒谎;「刷新失败」的事实由 a11y / tooltip 的「加载失败(最后成功 HH:mm)」
+  半句承担。两口径各有守门测试(`MenuBarKimiPresentationTests` / `MenuBarAccessibilityLabelTests`)。
+- **单家最紧 plan-window 取数收进 Core**:`Snapshot.tightestPlanWindow` 成为唯一口径
+  (`StatusEvaluator.lowestPlanWindowFraction` 与全局最紧、tab 速览、菜单栏图标均由此出发),
+  App 侧不再自备一份同规则实现。
+- **清死属性**:`GlobalPercentPresentation.isStale`(原图标消费)随图标改口径失去生产消费者,
+  连同 `GlobalPercentStalenessTests` 一并删除;总览大数字的陈旧表达仍按 spec 原口径
+  (只在最紧家 `loadFailed` 时副行补「(最后成功 HH:mm)」)。

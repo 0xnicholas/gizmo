@@ -118,9 +118,11 @@ public struct GlobalOverview: Equatable, Sendable {
                 continue
             }
             worst = ProviderStatus.worst(worst ?? .normal, evaluator.status(for: snapshot))
-            for window in snapshot.planWindows {
-                guard let fraction = window.remainingFraction else { continue }
-                if let current = tightest, current.fraction <= fraction { continue }
+            // 单家先取最紧窗(`Snapshot.tightestPlanWindow`,与 status/tab/图标同一取数),
+            // 再在全局比——跨家取最低不必重新扫一遍窗口。
+            if let window = snapshot.tightestPlanWindow,
+               let fraction = window.remainingFraction,
+               tightest.map({ $0.fraction > fraction }) ?? true {
                 tightest = Tightest(
                     provider: provider,
                     windowLabel: window.label,

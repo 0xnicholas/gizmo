@@ -88,7 +88,7 @@ struct ExpiredGlobalExitTests {
             kimi: PreviewData.runtime(.kimi, snapshot: nil, credential: .missing),
             deepseek: Self.healthyDeepSeek
         )
-        let presentation = GlobalPercentPresentation(state: state, scheme: .light, now: Self.now)
+        let presentation = GlobalPercentPresentation(state: state, scheme: .light)
         #expect(presentation.text == "—")
         #expect(presentation.colorStatus == .normal, "DeepSeek 余额档给色,不是 GLM 的死档")
     }
@@ -102,7 +102,7 @@ struct ExpiredGlobalExitTests {
             kimi: Self.expiredKimi(),
             deepseek: Self.unconfigured
         )
-        let presentation = GlobalPercentPresentation(state: state, scheme: .light, now: Self.now)
+        let presentation = GlobalPercentPresentation(state: state, scheme: .light)
         #expect(presentation.text == "—")
         #expect(presentation.colorStatus == nil)
     }

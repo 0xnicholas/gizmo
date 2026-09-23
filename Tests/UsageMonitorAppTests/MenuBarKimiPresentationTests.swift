@@ -26,6 +26,7 @@ struct MenuBarKimiPresentationTests {
         credential: CredentialState = .configured,
         validity: PlanValidity? = nil,
         manualExpiry: ManualPlanExpiry? = nil,
+        loadFailed: Bool = false,
         withSnapshot: Bool = true
     ) -> ProviderRuntimeState {
         PreviewData.runtime(
@@ -39,6 +40,7 @@ struct MenuBarKimiPresentationTests {
                 )
                 : nil,
             credential: credential,
+            loadFailed: loadFailed,
             manualExpiry: manualExpiry
         )
     }
@@ -196,5 +198,29 @@ struct MenuBarKimiPresentationTests {
     func noFigureIsNeverStale() {
         #expect(!presentation(state(kimi: kimiRuntime(credential: .missing, withSnapshot: false))).isStale)
         #expect(!presentation(state(kimi: kimiRuntime(validity: expiredValidity()))).isStale)
+    }
+
+    @Test("持数字但 lastSuccessAt 未知:不误标陈旧")
+    func unknownLastSuccessNotMarked() {
+        var runtime = kimiRuntime()
+        runtime.lastSuccessAt = nil
+        #expect(!presentation(state(kimi: runtime)).isStale)
+        #expect(presentation(state(kimi: runtime)).text == "66%")
+    }
+
+    /// 两个口径**正交**(评审记的一处口径差,此处定为口径):降透明度看数据的**年龄**
+    /// (2× 轮询间隔),不看 `loadFailed`——刚成功几分钟就连连刷新失败时,数字本身
+    /// 并不旧,降透明度是撒谎;「刷新失败」的事实由 a11y 的「加载失败(最后成功
+    /// HH:mm)」半句承担。手动连点刷新几十秒就能凑满 3 轮失败,不是纸上空谈。
+    @Test("加载失败≠陈旧:刚成功 5 分钟就攒满失败轮数,数字不降透明度")
+    func loadFailureWithFreshDataIsNotStale() {
+        let icon = presentation(state(kimi: kimiRuntime(age: 5 * 60, loadFailed: true)))
+        #expect(icon.text == "66%")
+        #expect(!icon.isStale)
+    }
+
+    @Test("加载失败且数据已超阈值:两个口径同时成立,仍降透明度")
+    func loadFailureWithOldDataIsStale() {
+        #expect(presentation(state(kimi: kimiRuntime(age: 90 * 60, loadFailed: true))).isStale)
     }
 }

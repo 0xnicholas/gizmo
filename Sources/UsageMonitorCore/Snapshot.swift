@@ -77,6 +77,21 @@ extension Snapshot {
         windows.filter { $0.kind == .rateLimit }
     }
 
+    /// 最紧的 plan-window:全部 plan-window 中剩余占比最低者(并列取先出现者),
+    /// 频限窗不参与——与 status 判定同一范围。
+    /// **单家取数只此一份**:status 推导(`StatusEvaluator.lowestPlanWindowFraction`)、
+    /// tab 速览、菜单栏图标、全局最紧都从这里出发,四处不各算一次。
+    public var tightestPlanWindow: QuotaWindow? {
+        var tightest: QuotaWindow?
+        var lowest = Double.infinity
+        for window in planWindows {
+            guard let fraction = window.remainingFraction, fraction < lowest else { continue }
+            lowest = fraction
+            tightest = window
+        }
+        return tightest
+    }
+
     /// 该快照持有的币种,按字母序(结果稳定,便于 UI 与测试)。
     public var currencies: [String] {
         Array(Set(balances.map(\.currency))).sorted()

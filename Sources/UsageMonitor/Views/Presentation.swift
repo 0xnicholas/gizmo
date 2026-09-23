@@ -336,22 +336,9 @@ struct EveryMinute<Content: View>: View {
     }
 }
 
-/// 单家最紧 plan-window 的取数口径(tab 速览与菜单栏图标共用):全部 plan-window
-/// 中剩余占比最低者(并列取先出现者),频限窗不参与——与 status 判定同一范围。
-/// 数字口径只此一份:`StatusEvaluator.lowestPlanWindowFraction` 只给占比,
-/// 图标还要窗口名(a11y 要讲「Kimi 周窗口」),两处各拼一次会漂移。
-enum TightestPlanWindow {
-    static func of(_ snapshot: Snapshot?) -> QuotaWindow? {
-        snapshot?.planWindows
-            .compactMap { window in window.remainingFraction.map { (window: window, fraction: $0) } }
-            .min { $0.fraction < $1.fraction }?
-            .window
-    }
-}
-
 /// 单家 tab 的速览数字口径(P2-5,B,#43):tab 文本追加各家 plan-window 最低
 /// 剩余%——数字与焦点卡窗口行、总览大数字同源(Percent.display,经
-/// TightestPlanWindow,频限窗不参与),不用切两次标签页
+/// `Snapshot.tightestPlanWindow`,频限窗不参与),不用切两次标签页
 /// 看另外两家。颜色随该家 status,口径乙同型:窗口家色档 = 最紧窗自身色档;
 /// DeepSeek 无窗的「彩色 —」由余额色档给色;无快照家灰「—」。
 /// tab 圆点与数字共用同一取色档(quickFigure.colorStatus),两处不打架。
@@ -372,7 +359,7 @@ struct TabPercentPresentation {
             return
         }
         colorStatus = runtime.hasSnapshot ? runtime.status : nil
-        if let fraction = TightestPlanWindow.of(runtime.snapshot)?.remainingFraction {
+        if let fraction = runtime.snapshot?.tightestPlanWindow?.remainingFraction {
             text = "\(Percent.display(fraction))%"
         } else {
             text = "—"
@@ -386,13 +373,9 @@ struct TabPercentPresentation {
 /// 全局最差(含 DeepSeek 余额档)仍由总览条圆点/alertLine 与临界通知兜底。
 ///
 /// 菜单栏图标**不再**消费此处(#59):图标恒为 Kimi 一家,见
-/// `MenuBarPercentPresentation`——同一数值在总览条与图标各算一次的字面同源就此解除,
-/// 换来的是「图标不随别家换人」;两处数字仍共用 `Percent.display` 与
-/// `TightestPlanWindow`,除法与取整口径不分叉。
+/// `MenuBarPercentPresentation`;两处数字仍共用 `Percent.display` 与
+/// `Snapshot.tightestPlanWindow`,除法与取整口径不分叉。
 struct GlobalPercentPresentation {
-    /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3,spec P0-3)。
-    static let staleThreshold: TimeInterval = 2 * Thresholds().refreshInterval
-
     let text: String
     let color: Color
     /// 数字口径的取色档(口径乙,IC-4+IC-5,#41):颜色随数字——有窗 = 最紧窗
@@ -401,24 +384,16 @@ struct GlobalPercentPresentation {
     /// DeepSeek 余额临界不再把数字拉红,由临界通知与总览条(圆点/alertLine
     /// 仍消费 worstStatus)兜底——「红 65%」混叠形态消灭。
     let colorStatus: ProviderStatus?
-    /// 数字是否陈旧:最紧窗所属 provider 自己的 lastSuccessAt 距 now 超阈值——
-    /// 不用全局 lastUpdatedAt,那会被别家成功刷新冲掉,不能反映「这个数字」的新旧。
-    let isStale: Bool
 
-    init(state: EngineState, scheme: ColorScheme, now: Date = Date()) {
+    init(state: EngineState, scheme: ColorScheme) {
         if let percent = state.overview.tightestPercent, let tightest = state.overview.tightest {
             text = "\(percent)%"
             colorStatus = state.provider(tightest.provider).status
-            color = Presentation.color(for: colorStatus, scheme: scheme)
-            isStale = state.provider(tightest.provider).lastSuccessAt
-                .map { now.timeIntervalSince($0) > Self.staleThreshold }
-                ?? false
         } else {
             text = "—"
             colorStatus = Self.snapshotHolderStatus(state)
-            color = Presentation.color(for: colorStatus, scheme: scheme)
-            isStale = false
         }
+        color = Presentation.color(for: colorStatus, scheme: scheme)
     }
 
     /// 无任何 plan-window 时:有快照的家按自身档位给色(DeepSeek-only 的余额档
@@ -436,7 +411,7 @@ struct GlobalPercentPresentation {
 }
 
 /// 菜单栏图标口径(#59):图标恒为 **Kimi 一家**的用量,不再随「全局最紧」换人。
-/// 数字 = Kimi 最紧 plan-window 的剩余%(经 `TightestPlanWindow`,与 Kimi 焦点卡
+/// 数字 = Kimi 最紧 plan-window 的剩余%(经 `Snapshot.tightestPlanWindow`,与 Kimi 焦点卡
 /// 窗口行 / tab 速览同源),颜色随数字 = Kimi 自身 status——他者更紧(含 DeepSeek
 /// 余额档)不改图标上场家。popover 总览条仍按口径乙给「彩色 —」
 /// (spec `2026-ux-improvements` P2-3 的图标半句由本口径修订:菜单栏不再有
@@ -455,6 +430,11 @@ struct MenuBarPercentPresentation {
     let colorStatus: ProviderStatus?
     /// 数字是否陈旧:按 **Kimi 自己**的 lastSuccessAt——不用全局 lastUpdatedAt,
     /// 那会被别家成功刷新冲掉,不能反映「这个数字」的新旧。
+    ///
+    /// 与 `loadFailed` **正交**(IC-3 原口径,本次不改):陈旧看的是数据的**年龄**
+    /// (2× 轮询间隔),加载失败看的是**刷新**这几次没成——刚失败时数据可能只旧
+    /// 几分钟,此时降透明度是撒谎;刷新失败的事实由 a11y 的「加载失败(最后成功
+    /// HH:mm)」半句承担。手动连点刷新只几十秒就能凑满 3 轮失败,不是纸上空谈。
     let isStale: Bool
 
     init(state: EngineState, scheme: ColorScheme, now: Date = Date()) {
@@ -470,7 +450,7 @@ struct MenuBarPercentPresentation {
             text = "—"
             colorStatus = nil
             isStale = false
-        } else if let fraction = TightestPlanWindow.of(runtime.snapshot)?.remainingFraction {
+        } else if let fraction = runtime.snapshot?.tightestPlanWindow?.remainingFraction {
             text = "\(Percent.display(fraction))%"
             colorStatus = runtime.status
             isStale = runtime.lastSuccessAt.map { now.timeIntervalSince($0) > Self.staleThreshold } ?? false
@@ -520,7 +500,7 @@ struct MenuBarAccessibilityPresentation {
         case .active, .unknown:
             break
         }
-        guard let window = TightestPlanWindow.of(runtime.snapshot),
+        guard let window = runtime.snapshot?.tightestPlanWindow,
               let fraction = window.remainingFraction
         else {
             // 「—」的三种来历分开讲:加载失败(连旧数据都没有) / 只持非套餐窗 /

@@ -110,6 +110,16 @@ struct MenuBarAccessibilityLabelTests {
         #expect(label(state) == "Kimi 周窗口剩余 66%,状态正常,加载失败(最后成功 \(lastSuccess))")
     }
 
+    /// 与图标本体的降透明度正交(两口径的搭档断言):数据只旧 5 分钟就攒满失败的
+    /// 那个形态下,图标不降透明度,「刷新失败」的事实只能由这行说明承担——
+    /// 否则那个形态下没有任何地方承认失败。
+    @Test("加载失败但数据新鲜:失败事实只在这行说明里")
+    func loadFailureWithFreshDataIsTextOnly() {
+        let state = self.state(kimi: kimiRuntime(age: 5 * 60, loadFailed: true), glm: healthyGLM())
+        let lastSuccess = Presentation.time(Self.now.addingTimeInterval(-5 * 60))
+        #expect(label(state) == "Kimi 周窗口剩余 66%,状态正常,加载失败(最后成功 \(lastSuccess))")
+    }
+
     @Test("加载失败且从无成功:连旧数字都没有,「—」的来历讲成加载失败")
     func loadFailedWithoutSnapshot() {
         let state = self.state(kimi: kimiRuntime(loadFailed: true, withSnapshot: false))

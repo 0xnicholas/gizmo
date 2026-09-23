@@ -60,7 +60,9 @@ public struct StatusEvaluator: Sendable {
     }
 
     /// 全部 plan-window 剩余占比的最低值;没有 plan-window 时 nil。
+    /// 取数与 `Snapshot.tightestPlanWindow` 同源(单家最紧窗只此一份),
+    /// 这里只把占比摘出来——status 推导与展示层不会各算一次。
     public func lowestPlanWindowFraction(in snapshot: Snapshot) -> Double? {
-        snapshot.planWindows.compactMap(\.remainingFraction).min()
+        snapshot.tightestPlanWindow?.remainingFraction
     }
 }
