@@ -23,7 +23,8 @@ struct LaunchAgentLoginItemTests {
                 label: "com.nicholasli.usagemonitor.smoke.\(UUID().uuidString)",
                 directory: directory,
                 executablePath: "/Applications/Usage Monitor.app/Contents/MacOS/UsageMonitor",
-                runLaunchctl: launchctl.run
+                // 闭包形式:注入点要求 @Sendable,替身自体是 @unchecked Sendable(内部加锁)。
+                runLaunchctl: { launchctl.run($0) }
             )
         }
 

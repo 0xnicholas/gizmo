@@ -20,13 +20,17 @@ struct LaunchAgentLoginItem: LoginItemControlling {
     let label: String
     let directory: URL
     let executablePath: String
-    let runLaunchctl: ([String]) -> LaunchctlResult
+    /// `@Sendable`:适配器整体是值语义的无状态壳(只有注入的替身与路径),
+    /// 测试的替身也是 `@unchecked Sendable`(内部加锁);不标则在 Swift 6 语言模式下编译不过。
+    let runLaunchctl: @Sendable ([String]) -> LaunchctlResult
 
     init(
         label: String = Bundle.main.bundleIdentifier ?? LaunchAgentLoginItem.productionLabel,
         directory: URL? = nil,
         executablePath: String? = nil,
-        runLaunchctl: @escaping ([String]) -> LaunchctlResult = LaunchAgentLoginItem.launchctl
+        // 默认值写成闭包(而不是直接给函数引用):闭包字面量在 @Sendable 上下文里
+        // 被推断为 @Sendable,不触发「把非 Sendable 函数值转成 @Sendable」的告警。
+        runLaunchctl: @escaping @Sendable ([String]) -> LaunchctlResult = { LaunchAgentLoginItem.launchctl($0) }
     ) {
         self.label = label
         self.directory = directory ?? FileManager.default.homeDirectoryForCurrentUser

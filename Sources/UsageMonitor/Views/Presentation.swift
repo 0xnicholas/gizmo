@@ -533,14 +533,12 @@ struct MenuBarAccessibilityPresentation {
             // IC-3:数字来自最后一次成功——旧数字附「最后成功 HH:mm」,与焦点卡/总览条同口径。
             parts.append(runtime.lastSuccessAt.map { "加载失败(最后成功 \(Presentation.time($0)))" } ?? "加载失败")
         }
-        if MenuBarStaleness.isStale(runtime, now: now) {
-            // 陈旧只有**视觉**表达(数字降透明度),读屏用户拿不到——同一事实在这里
-            // 说一遍;时刻已由「加载失败」半句给出时不重复(两个事实各占半句)。
-            if runtime.loadFailed, let lastSuccessAt = runtime.lastSuccessAt {
-                parts.append("数据较旧")
-            } else if let lastSuccessAt = runtime.lastSuccessAt {
-                parts.append("数据较旧(最后成功 \(Presentation.time(lastSuccessAt)))")
-            }
+        // 陈旧只有**视觉**表达(数字降透明度),读屏用户拿不到——同一事实在这里
+        // 说一遍;时刻已由「加载失败」半句给出时不重复(两个事实各占半句)。
+        if let lastSuccessAt = runtime.lastSuccessAt, MenuBarStaleness.isStale(runtime, now: now) {
+            parts.append(runtime.loadFailed
+                ? "数据较旧"
+                : "数据较旧(最后成功 \(Presentation.time(lastSuccessAt)))")
         }
         text = parts.joined(separator: ",")
     }
