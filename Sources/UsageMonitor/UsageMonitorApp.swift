@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // 防 App Nap:后台 30 分钟轮询保准点(系统睡眠天然暂停,唤醒后自然恢复)。
+        // 防 App Nap:后台 20 分钟轮询保准点(系统睡眠天然暂停,唤醒后自然恢复)。
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.background, .automaticTerminationDisabled, .suddenTerminationDisabled],
             reason: "用量监视器后台轮询"

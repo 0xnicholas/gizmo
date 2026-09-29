@@ -41,7 +41,7 @@ open build/用量监视器.app
 ## 首次使用
 
 1. 打开 popover →「开始配置」(未配置时)或设置窗口,在三家页面粘贴凭据:DeepSeek API key(`sk-` 开头,作 Bearer 用)、Kimi for Coding 访问 token(整段复制)、GLM 套餐 API key(裸 key)。值只在进程内使用,存本机钥匙串(service `com.nicholasli.usagemonitor.credentials`,account = provider 键名),不落日志、不进快照。
-2. 保存后立即刷新;此后每 30 分钟后台轮询三家,打开 popover 与手动刷新即时生效。单家连续失败 3 轮(≈90 分钟)显示「加载失败」,不牵连他者。
+2. 保存后立即刷新;此后每 20 分钟后台轮询三家,打开 popover 与手动刷新即时生效。单家连续失败 3 轮(≈60 分钟)显示「加载失败」,不牵连他者。
 3. 快照缓存在 `~/Library/Application Support/用量监视器/snapshots.json`(单份、无历史):重启先显旧数据再刷新。
 
 ## 开发期验收入口(仅 DEBUG 构建)
@@ -50,7 +50,7 @@ open build/用量监视器.app
 |---|---|
 | `--render-previews <目录>` | 离屏渲染全部界面形态成 PNG + Vision OCR 打印可见文案(本机没有 Xcode Previews);覆盖 popover 各态、设置窗口各态、菜单栏图标全态,浅色 + 深色 |
 | `--smoke-fetch` | 真实适配器 → 三家真实端点 → 解析归一化 → 原子落盘 → 回读;连跑两次即验「杀 App 重启先显旧数据」 |
-| `--smoke-poll <秒> <轮数>` | 真实时钟短周期轮询(30 分钟策略的缩比验证) |
+| `--smoke-poll <秒> <轮数>` | 真实时钟短周期轮询(20 分钟策略的缩比验证) |
 | `--smoke-auth <provider>` | 假凭据 → 真实 401 → 重试一次 → 凭据失效事件 |
 | `--smoke-outage <provider>` | 不可路由地址真实超时 ×3 轮 → 加载失败 → 恢复;单家失败不牵连他者 |
 | `--smoke-login-item` | 真实 LaunchAgent 写删 + `launchctl` 即时加载 / 卸载(冒烟专用 label,无残留) |

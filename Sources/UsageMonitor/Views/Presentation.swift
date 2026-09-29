@@ -267,6 +267,30 @@ struct RefreshFooterPresentation {
     }
 }
 
+/// 刷新节奏文案(脚注 + tooltip,#60):分钟数与失败轮数由当前 `Thresholds` 算出,不写死——
+/// 此前这段文案与阈值各自写死(改周期得记得同步三处)。
+/// 单位规则:一律「N 分钟」,满 60 不进小时(一套规则、无分支)。
+enum RefreshCadenceCopy {
+    /// 脚注右侧:「自动刷新 20 分钟」。
+    static func footer(thresholds: Thresholds = Thresholds()) -> String {
+        "自动刷新 \(minutes(thresholds.refreshInterval))"
+    }
+
+    /// 脚注 tooltip:周期、失败轮数与「轮数 × 周期」都由同一份参数算出。
+    static func help(thresholds: Thresholds = Thresholds()) -> String {
+        let rounds = thresholds.failureRoundsBeforeLoadFailure
+        let failureWindow = Double(rounds) * thresholds.refreshInterval
+        return "每 \(minutes(thresholds.refreshInterval))后台轮询三家;"
+            + "单家连续失败 \(rounds) 轮(≈\(minutes(failureWindow)))显示加载失败;"
+            + "打开本面板与手动刷新即时生效。"
+    }
+
+    /// 「N 分钟」:四舍五入到整分钟;下限 1,避免注入极短周期时输出「0 分钟」。
+    static func minutes(_ interval: TimeInterval) -> String {
+        "\(max(1, Int((interval / 60).rounded()))) 分钟"
+    }
+}
+
 /// 频限次级单行(P2-6,FC-3):「频限 90/100 请求 · 滚动 300 分钟 · 容量恢复 08:56」——
 /// 不带进度条、不沿用「重置」一词(滚动窗是容量随时间滑出恢复,不是额度重置);
 /// 滚动跨度取自解析层 label「频限 · 滚动窗(300 分钟)」的括号段,缺失时省略。
@@ -413,7 +437,7 @@ struct GlobalPercentPresentation {
 /// 菜单栏图标的陈旧判定(IC-3):图标本体与一行说明共用一处——看得见的降透明度
 /// 与听得见的「数据较旧(最后成功 HH:mm)」必须是同一个判定,否则两个通道会各说各话。
 enum MenuBarStaleness {
-    /// 陈旧阈值:2× 轮询间隔(默认 30 分钟 → 60 分钟)。展示参数,不动引擎(IC-3,spec P0-3)。
+    /// 陈旧阈值:2× 轮询间隔(默认 20 分钟 → 40 分钟)。展示参数,不动引擎(IC-3,spec P0-3)。
     static let threshold: TimeInterval = 2 * Thresholds().refreshInterval
 
     /// 按 **Kimi 自己**的 lastSuccessAt 判定——不用全局 lastUpdatedAt,那会被别家成功

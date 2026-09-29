@@ -70,7 +70,7 @@ export SMOKE_KIMI=…       # Kimi for Coding 整段 token
 export SMOKE_GLM=…        # GLM 裸 key
 
 .build/debug/UsageMonitor --smoke-fetch          # 启动先发缓存 → 新鲜刷新 → 落盘回读;连跑两次即验「杀 App 重启先显旧数据」
-.build/debug/UsageMonitor --smoke-poll 5 3       # 真实时钟短周期轮询(AppModel 真实循环;验收 30 分钟策略的缩比验证)
+.build/debug/UsageMonitor --smoke-poll 5 3       # 真实时钟短周期轮询(AppModel 真实循环;验收 20 分钟策略的缩比验证)
 .build/debug/UsageMonitor --smoke-auth deepseek  # 假凭据 → 真实 401 → 重试一次 → 凭据失效事件
 .build/debug/UsageMonitor --smoke-outage glm     # 不可路由地址真实超时 ×3 轮 → 加载失败 → 恢复;单家失败不牵连他者
 .build/debug/UsageMonitor --smoke-login-item    # 真实 LaunchAgent 写删 + launchctl 即时加载/卸载(冒烟专用 label + /usr/bin/true,无残留;验收「开关即时生效 + plist 指向可执行文件」,#22)

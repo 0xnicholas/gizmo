@@ -271,8 +271,8 @@ struct PopoverView: View {
                 .animation(.easeInOut(duration: 0.35), value: refresh.highlightsUpdatedText)
             }
             Spacer()
-            Text("自动刷新 30 分钟")
-                .help("每 30 分钟后台轮询三家;单家连续失败 3 轮(≈90 分钟)显示加载失败;打开本面板与手动刷新即时生效。")
+            Text(RefreshCadenceCopy.footer())
+                .help(RefreshCadenceCopy.help())
             Button("退出用量监视器") { model.quit() }
                 .buttonStyle(.borderless)
                 .help("结束本次运行(不影响登录自启设置)")

@@ -21,8 +21,9 @@ public struct Thresholds: Equatable, Sendable {
     /// 「即将到期」的提前天数:有效期剩余 ≤ 该值时,卡上有效期行补「(剩 N 天)」
     /// (#57 的到期前提醒通知共用同一阈值)。
     public var expiryReminderDays: Int
-    /// 到期结论的陈旧阈值:有效期观测时刻距 now 超过该值时,到期结论带归属时刻
-    /// (默认 2× 默认轮询周期 = 60 分钟;连续失败超过约两轮即触发)。
+    /// 到期结论的陈旧阈值:有效期观测时刻距 now 超过该值时,到期结论带归属时刻。
+    /// 缺省 = 2× 同一次构造传入的轮询周期(默认 20 分钟 → 40 分钟;连续失败超过约两轮即触发);
+    /// 显式给值可覆盖这一派生。
     public var expiryStalenessThreshold: TimeInterval
 
     public init(
@@ -32,9 +33,10 @@ public struct Thresholds: Equatable, Sendable {
         deepseekLowBalance: Decimal = 50,
         notificationCooldown: TimeInterval = 24 * 60 * 60,
         failureRoundsBeforeLoadFailure: Int = 3,
-        refreshInterval: TimeInterval = 30 * 60,
+        refreshInterval: TimeInterval = 20 * 60,
         expiryReminderDays: Int = 3,
-        expiryStalenessThreshold: TimeInterval = 2 * 30 * 60
+        // nil = 按轮询周期派生(Swift 的默认参数不能引用同列表的其他参数,故用 nil 作哨兵)。
+        expiryStalenessThreshold: TimeInterval? = nil
     ) {
         self.criticalRemainingFraction = criticalRemainingFraction
         self.lowRemainingFraction = lowRemainingFraction
@@ -44,6 +46,8 @@ public struct Thresholds: Equatable, Sendable {
         self.failureRoundsBeforeLoadFailure = failureRoundsBeforeLoadFailure
         self.refreshInterval = refreshInterval
         self.expiryReminderDays = expiryReminderDays
-        self.expiryStalenessThreshold = expiryStalenessThreshold
+        // 派生而非第二处字面量:「2× 轮询周期」的等式在此一次算清,
+        // 改周期(含测试/冒烟注入的周期)不必记得同步这一处。
+        self.expiryStalenessThreshold = expiryStalenessThreshold ?? 2 * refreshInterval
     }
 }

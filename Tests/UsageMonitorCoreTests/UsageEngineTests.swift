@@ -527,7 +527,12 @@ struct UsageEngineTests {
     @Test("时间一律取自注入时钟(1970 哨兵):引擎内不读系统时钟")
     func timestampsComeFromInjectedClock() async {
         let frozen = Date(timeIntervalSince1970: 0)
-        let harness = EngineHarness(payloads: [.glm: Payloads.glm()], clock: TestClock(frozen))
+        // 周期也注入非默认值:截止时刻跟随注入参数,而非随手写死的默认值(#60)。
+        let harness = EngineHarness(
+            thresholds: Thresholds(refreshInterval: 7 * 60),
+            payloads: [.glm: Payloads.glm()],
+            clock: TestClock(frozen)
+        )
         let events = await harness.engine.refreshAll()
 
         let state = await harness.engine.state
@@ -537,7 +542,7 @@ struct UsageEngineTests {
         #expect(state.provider(.glm).lastSuccessAt == frozen)
         #expect(state.provider(.glm).snapshot?.meta.fetchedAt == frozen)  // 快照时间戳同样来自时钟
         #expect(events == [.snapshotUpdated(.glm)])
-        #expect(await harness.engine.nextRefreshAt == frozen.addingTimeInterval(30 * 60))
+        #expect(await harness.engine.nextRefreshAt == frozen.addingTimeInterval(7 * 60))
     }
 
     @Test("阈值与静默窗口参数化:换一份 Thresholds 即改判定与冷却")
@@ -571,9 +576,14 @@ struct UsageEngineTests {
 
     // MARK: - 调度
 
-    @Test("30 分钟轮询:截止时刻、手动刷新即时并顺延")
+    @Test("轮询截止时刻:未到点不刷、到点即刷,手动刷新即时并顺延")
     func refreshSchedule() async {
-        let harness = EngineHarness(payloads: [.glm: Payloads.glm()])
+        // 注入非默认周期:本测只验调度机制(截止 = 上次开始 + 周期),不隐式依赖默认取值(#60)。
+        let interval: TimeInterval = 7 * 60
+        let harness = EngineHarness(
+            thresholds: Thresholds(refreshInterval: interval),
+            payloads: [.glm: Payloads.glm()]
+        )
 
         let initial = await harness.engine.nextRefreshAt
         #expect(initial == nil)
@@ -582,17 +592,17 @@ struct UsageEngineTests {
 
         _ = await harness.engine.refreshAll()
         let deadline = await harness.engine.nextRefreshAt
-        #expect(deadline == Fixture.epoch.addingTimeInterval(30 * 60))
+        #expect(deadline == Fixture.epoch.addingTimeInterval(interval))
 
-        let beforeDeadline = await harness.engine.shouldRefresh(at: Fixture.epoch.addingTimeInterval(29 * 60))
+        let beforeDeadline = await harness.engine.shouldRefresh(at: Fixture.epoch.addingTimeInterval(interval - 60))
         #expect(beforeDeadline == false)
-        let atDeadline = await harness.engine.shouldRefresh(at: Fixture.epoch.addingTimeInterval(30 * 60))
+        let atDeadline = await harness.engine.shouldRefresh(at: Fixture.epoch.addingTimeInterval(interval))
         #expect(atDeadline)
 
         harness.clock.advance(5 * 60)
         _ = await harness.engine.refreshAll()  // 手动刷新即拉即得
         let manualDeadline = await harness.engine.nextRefreshAt
-        #expect(manualDeadline == Fixture.epoch.addingTimeInterval(35 * 60))
+        #expect(manualDeadline == Fixture.epoch.addingTimeInterval(5 * 60 + interval))
     }
 
     @Test("全局汇总:总览大数字与颜色取全部快照")

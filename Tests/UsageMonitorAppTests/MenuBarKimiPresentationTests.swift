@@ -169,14 +169,14 @@ struct MenuBarKimiPresentationTests {
 
     // MARK: - 陈旧标记(IC-3):按 Kimi 自己的 lastSuccessAt
 
-    @Test("超 60 分钟(2× 轮询间隔)带陈旧标记,数字本身不变")
+    @Test("超 2× 轮询间隔(默认 40 分钟)带陈旧标记,数字本身不变")
     func staleBeyondThreshold() {
         let icon = presentation(state(kimi: kimiRuntime(age: Self.staleThreshold + 60)))
         #expect(icon.text == "66%")
         #expect(icon.isStale)
     }
 
-    @Test("未超不带;整 60 分钟不算超过")
+    @Test("未超不带;整 2× 周期不算超过(边界是严格大于)")
     func freshWithinThreshold() {
         #expect(!presentation(state(kimi: kimiRuntime(age: Self.staleThreshold))).isStale)
         #expect(!presentation(state(kimi: kimiRuntime(age: Self.staleThreshold - 60))).isStale)

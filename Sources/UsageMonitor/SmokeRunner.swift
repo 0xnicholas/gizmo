@@ -139,7 +139,7 @@ enum SmokeRunner {
 
     // MARK: - --smoke-poll:真实时钟短周期轮询(经 AppModel 真实循环)
 
-    /// 覆盖验收:「30 分钟轮询在真实运行方式下验证」——注入短周期 Thresholds,
+    /// 覆盖验收:「20 分钟轮询在真实运行方式下验证」——注入短周期 Thresholds,
     /// 走的仍是 AppModel.startPolling 的真实循环(deadline → sleep → shouldRefresh → refreshAll)。
     private static func smokePoll(intervalSeconds: Double, cycles: Int) async -> Int32 {
         print("== 冒烟:smoke-poll 间隔 \(intervalSeconds)s × \(cycles) 轮(真实时钟,AppModel 真实轮询循环)==")

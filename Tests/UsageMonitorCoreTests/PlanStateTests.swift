@@ -92,11 +92,18 @@ struct PlanStateTests {
         #expect(legacy == .expired(validUntil: Self.periodEnd, observedAt: Fixture.epoch.addingTimeInterval(-120)))
     }
 
-    @Test("阈值默认:提前提醒 3 天;到期结论陈旧阈值 = 2× 默认轮询周期(60 分钟)")
+    @Test("阈值默认:提前提醒 3 天;轮询周期 20 分钟;到期结论陈旧阈值派生 2× 周期(40 分钟)")
     func thresholdDefaults() {
         let thresholds = Thresholds()
         #expect(thresholds.expiryReminderDays == 3)
+        #expect(thresholds.refreshInterval == 20 * 60)
         #expect(thresholds.expiryStalenessThreshold == 2 * thresholds.refreshInterval)
-        #expect(thresholds.expiryStalenessThreshold == 3_600)
+        #expect(thresholds.expiryStalenessThreshold == 2_400)
+    }
+
+    @Test("到期结论陈旧阈值派生:注入自定义周期即跟随;显式给值可覆盖")
+    func expiryStalenessDerivesFromInjectedInterval() {
+        #expect(Thresholds(refreshInterval: 7 * 60).expiryStalenessThreshold == 14 * 60)
+        #expect(Thresholds(refreshInterval: 7 * 60, expiryStalenessThreshold: 3_600).expiryStalenessThreshold == 3_600)
     }
 }
